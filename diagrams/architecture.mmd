@@ -1,0 +1,36 @@
+﻿flowchart TD
+    %% PawPal+ system architecture (starting point for the applied AI final project).
+    %% This shows the system as inherited from Module 2. Update it once the AI feature is designed.
+
+    User([Pet owner])
+
+    subgraph UI["Interfaces"]
+        App["app.py<br/>Streamlit web app"]
+        CLI["main.py<br/>Command-line demo"]
+    end
+
+    subgraph Core["pawpal_system.py (core logic)"]
+        Owner["Owner<br/>pets, available minutes"]
+        Pet["Pet<br/>tasks"]
+        Task["Task<br/>time, duration, priority, frequency"]
+        Scheduler["Scheduler<br/>sort, generate plan, detect conflicts,<br/>find free slot, explain plan"]
+    end
+
+    Fmt["formatting.py<br/>badges, emojis, tables"]
+    Store[("data.json<br/>saved owner data")]
+    Tests["tests/<br/>pytest suite"]
+
+    User --> App
+    User --> CLI
+    App --> Owner
+    CLI --> Owner
+    Owner --> Pet --> Task
+    App --> Scheduler
+    CLI --> Scheduler
+    Scheduler --> Owner
+    Scheduler -->|"daily plan + warnings"| App
+    App --> Fmt
+    CLI --> Fmt
+    Owner <-->|"save / load"| Store
+    Tests -.->|"verify"| Core
+    Tests -.->|"verify"| Fmt
