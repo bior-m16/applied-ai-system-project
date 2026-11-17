@@ -126,7 +126,10 @@ h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
     background:{YELLOW}; color:{INK}; box-shadow:3px 3px 0 {INK}; }}
 .stButton button[kind="primary"]:hover {{ background:#FFC23D; color:{INK}; border-color:{INK}; }}
 .stButton button[kind="primary"]:active {{ box-shadow:1px 1px 0 {INK}; transform:translate(2px,2px); }}
-.st-key-build_plan button {{ background:{INK}; color:#FFFFFF; box-shadow:none; }}
+.st-key-build_plan button {{ background:#FFFFFF; color:{INK}; box-shadow:3px 3px 0 {INK}; }}
+.st-key-build_plan button:hover {{ background:#FFF8E0; border-color:{INK}; color:{INK}; }}
+.st-key-add_tasks button {{ background:{INK}; color:#FFFFFF; box-shadow:3px 3px 0 #00000040; }}
+.st-key-add_tasks button:hover {{ background:#3A2B6A; border-color:{INK}; color:#FFFFFF; }}
 
 /* small source tags (popover triggers) inside stickers */
 [class*="st-key-task_sticker_"] [data-testid="stPopover"] button {{
@@ -140,6 +143,20 @@ h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
 [data-testid="stTabs"] [role="tablist"]::after,
 [data-testid="stTabs"] .react-aria-SelectionIndicator {{ display:none; }}
 [data-testid="stTabs"] [role="tablist"] {{ gap:8px; padding:4px 6px 10px 0; }}
+
+/* page bar (Today / Schedule / The pack) as pills, like the old tabs */
+[data-testid="stButtonGroup"] [role="radiogroup"] {{ gap:8px; flex-wrap:wrap; }}
+[data-testid="stButtonGroup"] button[data-variant="segmented_control"] {{ border:{_BORDER} !important;
+    border-radius:999px !important; margin:0 !important; clip-path:none !important;
+    padding:6px 20px; font-weight:600; min-height:42px; background:transparent; color:{INK}; }}
+[data-testid="stButtonGroup"] button[data-variant="segmented_control"][aria-checked="true"] {{
+    background:{INK}; color:#FFFFFF; }}
+[data-testid="stButtonGroup"] button[data-variant="segmented_control"]:hover:not([aria-checked="true"]) {{
+    background:#FFF8E0; }}
+
+/* a day with nothing on it: a clear card instead of a bare line */
+.st-key-sched_empty {{ background:{CREAM}; border:2px dashed {INK}; border-radius:28px; padding:28px; }}
+.st-key-sched_empty h3 {{ margin-top:0; }}
 
 /* small screens: lighter shadows, less padding */
 @media (max-width: 640px) {{

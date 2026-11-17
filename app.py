@@ -1,7 +1,7 @@
 import html
 import logging
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import streamlit as st
@@ -94,69 +94,131 @@ def tasks_today(owner: Owner) -> list[Task]:
     return Scheduler.sort_by_time([t for t in pending if t.scheduled_time.date() == today])
 
 
-@st.dialog("Pet schedule", width="large")
-def show_pet_schedule(pet_name: str) -> None:
-    """Every task for one pet, in time order, with today's pending ones counted up top."""
-    pet = next((p for p in owner.pets if p.name == pet_name), None)
-    if pet is None:
-        st.info("That pet is no longer here.")
-        return
-    st.subheader(f"{pet.name}'s schedule")
-    if not pet.tasks:
-        st.info(f"No tasks for {pet.name} yet. Ask PawPal on the Today tab, or add one in The pack.")
-        return
-    sched = Scheduler(owner)
-    today = date.today()
-    pending_today = [t for t in pet.tasks if not t.completed and t.scheduled_time.date() == today]
-    minutes = sum(t.duration_minutes for t in pending_today)
-    col1, col2 = st.columns(2)
-    col1.metric("Tasks left today", len(pending_today))
-    col2.metric("Minutes today", minutes)
-    overlapping = {id(t) for pair in sched.detect_conflicts(owner.filter_tasks(completed=False)) for t in pair}
-    st.table(
-        [
-            {
-                "when": f"{t.scheduled_time:%a %b %d, %H:%M}",
-                "task": f"{task_emoji(t.title)} {t.title}",
-                "minutes": t.duration_minutes,
-                "priority": priority_badge(t.priority),
-                "repeats": t.frequency,
-                "status": "✅ done" if t.completed else "⏳ pending",
-                "conflict": "⚠️ overlap" if id(t) in overlapping else "",
-            }
-            for t in sched.sort_by_time(pet.tasks)
-        ]
+SCHEDULE_NOTE = (
+    "A repeating task appears on its next day once you mark the current one complete, "
+    "so days further ahead can look empty."
+)
+
+
+def go(page: str, **state) -> None:
+    """Button callback: set some session values, then show another page (runs before the next rerun)."""
+    for key, value in state.items():
+        st.session_state[key] = value
+    st.session_state.page = page
+    st.session_state["_last_page"] = page
+    if page != "The pack":
+        st.session_state.pop("pack_focus", None)
+
+
+def shift_day(days: int) -> None:
+    st.session_state.sched_day = st.session_state.sched_day + timedelta(days=days)
+
+
+def set_day(day: date) -> None:
+    st.session_state.sched_day = day
+
+
+def schedule_row_html(task: Task, overlapping: set[int]) -> str:
+    """One task as a display-only row: time range, title, pet, status. User text is escaped."""
+    end = task.scheduled_time + timedelta(minutes=task.duration_minutes)
+    repeat = "" if task.frequency == "once" else f" · repeats {task.frequency}"
+    chips = theme.pet_chip_html(task.pet_name, pet_index(owner, task.pet_name))
+    chips += " " + theme.priority_chip_html(task.priority)
+    if task.completed:
+        chips += " " + theme.chip_html("Done", theme.MINT)
+    if id(task) in overlapping:
+        chips += " " + theme.chip_html("Overlap", theme.PINK)
+    faded = "opacity:.65;" if task.completed else ""
+    return (
+        f'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'
+        f'background:#FFFFFF;border:2px solid {theme.INK};border-radius:16px;padding:10px 14px;'
+        f'margin-bottom:8px;color:{theme.INK};{faded}">'
+        f'<div><strong>{task.scheduled_time:%H:%M}&ndash;{end:%H:%M}</strong> &nbsp; {html.escape(task.title)}'
+        f'<div style="font-size:13px;color:{theme.MUTED}">{task.duration_minutes} min{repeat}</div></div>'
+        f'<div>{chips}</div></div>'
     )
 
 
-@st.dialog("Today's plan", width="large")
-def show_plan_dialog() -> None:
-    """The scheduler's plan for today: what fits in the owner's available minutes, and why."""
-    scheduler = Scheduler(owner)
-    plan = scheduler.generate_plan()
-    if not plan:
-        st.info("Nothing to schedule for today. Add a pet and some tasks.")
+def render_schedule() -> None:
+    """One day at a time, for all pets or one pet. A day with nothing on it says so clearly."""
+    st.session_state.setdefault("sched_day", date.today())
+    pet_options = ["All pets"] + [p.name for p in owner.pets]
+    if st.session_state.get("sched_pet") not in pet_options:
+        st.session_state.sched_pet = "All pets"
+
+    st.title("Full schedule")
+    pet_col, prev_col, day_col, next_col, today_col = st.columns([2, 1, 2, 1, 1], vertical_alignment="bottom")
+    pet_choice = pet_col.selectbox("Pet", pet_options, key="sched_pet")
+    prev_col.button("← Prev", key="sched_prev", on_click=shift_day, args=(-1,), width="stretch")
+    day = day_col.date_input("Day", key="sched_day")
+    next_col.button("Next →", key="sched_next", on_click=shift_day, args=(1,), width="stretch")
+    today_col.button("Today", key="sched_today", on_click=set_day, args=(date.today(),), width="stretch")
+
+    everyone = pet_choice == "All pets"
+    day_all = [t for t in owner.get_all_tasks() if t.scheduled_time.date() == day]
+    shown = Scheduler.sort_by_time([t for t in day_all if everyone or t.pet_name == pet_choice])
+    label = f"{day:%A, %b %d}" + (" (today)" if day == date.today() else "")
+    who = "" if everyone else f" for {pet_choice}"
+
+    if not owner.pets:
+        with st.container(key="sched_empty"):
+            st.markdown("### No pets yet")
+            st.write("Add a pet first, then you can schedule tasks for them.")
+            st.button("Add a pet", key="sched_add_pet", type="primary", on_click=go, args=("The pack",))
         return
-    used = sum(t.duration_minutes for t in plan)
-    st.success(f"Planned {len(plan)} task(s) using {used} of {owner.available_minutes} minutes.")
-    metric1, metric2 = st.columns(2)
-    metric1.metric("Tasks planned", len(plan))
-    metric2.metric("Minutes used", f"{used} / {owner.available_minutes}")
-    st.table(
-        [
+
+    if not shown:
+        later = sorted(
             {
-                "start": f"{t.scheduled_time:%H:%M}",
-                "pet": t.pet_name,
-                "task": f"{task_emoji(t.title)} {t.title}",
-                "minutes": t.duration_minutes,
-                "priority": priority_badge(t.priority),
+                t.scheduled_time.date()
+                for t in owner.get_all_tasks()
+                if t.scheduled_time.date() > day and (everyone or t.pet_name == pet_choice)
             }
-            for t in plan
-        ]
+        )
+        with st.container(key="sched_empty"):
+            st.markdown(f"### Nothing scheduled for {label}{who}")
+            st.write(f"There are no tasks{who} on this day. Pick another day above, or add some.")
+            add_col, jump_col, _ = st.columns([1.2, 3, 2])
+            add_col.button(
+                "Add tasks", key="sched_add_empty", type="primary", on_click=go, args=("The pack",),
+                kwargs={"pack_focus": "tasks"},
+            )
+            if later:
+                jump_col.button(
+                    f"Jump to the next day with tasks ({later[0]:%a %b %d})", key="sched_jump",
+                    on_click=set_day, args=(later[0],),
+                )
+            else:
+                st.caption(f"{'Your pets have' if everyone else pet_choice + ' has'} no tasks on any later day either.")
+        st.caption(SCHEDULE_NOTE)
+        return
+
+    pending = [t for t in shown if not t.completed]
+    used = sum(t.duration_minutes for t in pending)
+    budget = f"{used} of your {owner.available_minutes} minutes" if everyone else f"{used} min"
+    st.markdown(f"#### {label}{who}")
+    summary_col, add_col = st.columns([4, 1], vertical_alignment="center")
+    summary_col.caption(f"{plural(len(shown), 'task')} · {len(pending)} to do · {budget}")
+    add_col.button(
+        "Add tasks", key="sched_add", type="primary", on_click=go, args=("The pack",),
+        kwargs={"pack_focus": "tasks"}, width="stretch",
     )
-    show_conflicts(scheduler.conflict_warnings(plan))
-    with st.expander("Why this plan?", expanded=True):
-        st.text(scheduler.explain_plan(plan))
+
+    day_pending = [t for t in day_all if not t.completed]
+    conflicts = scheduler.detect_conflicts(day_pending)
+    overlapping = {id(t) for pair in conflicts for t in pair}
+    for task in shown:
+        st.markdown(schedule_row_html(task, overlapping), unsafe_allow_html=True)
+
+    if conflicts:
+        with st.container(key="ai_note_sched"):
+            lines = [f"- {w.removeprefix('Warning: ')}" for w in scheduler.conflict_warnings(day_pending)]
+            lines += [f"- {text}" for text in conflict_suggestions(scheduler, conflicts)]
+            st.markdown("**Overlapping tasks**\n" + "\n".join(lines))
+    if day_pending:
+        with st.expander("Why this plan? (all pets, within your available minutes)"):
+            st.text(scheduler.explain_plan(scheduler.generate_plan(day)))
+    st.caption(SCHEDULE_NOTE)
 
 
 # --- page setup -------------------------------------------------------------------------
@@ -184,13 +246,26 @@ if "flash" in st.session_state:
     st.toast(st.session_state.pop("flash"), icon=":material/check_circle:")
 
 st.markdown(theme.logo_html(), unsafe_allow_html=True)
-today_tab, pack_tab = st.tabs(["Today", "The pack"])
 
-# Streamlit runs top to bottom, so "The pack" (where data changes) is filled in FIRST.
-# "Today" is written afterwards and always shows the data as it is right now.
+PAGES = ["Today", "Schedule", "The pack"]
+st.session_state.setdefault("page", "Today")
+
+
+def nav_changed() -> None:
+    """The owner picked a page from the bar: forget any "jump to add tasks" request, and never end up on no page."""
+    st.session_state.pop("pack_focus", None)
+    if st.session_state.get("page") is None:  # clicking the selected pill again deselects it
+        st.session_state.page = st.session_state.get("_last_page", "Today")
+
+
+st.segmented_control("Go to", PAGES, key="page", label_visibility="collapsed", on_change=nav_changed)
+page = st.session_state.page or "Today"
+st.session_state["_last_page"] = page
+
 scheduler = Scheduler(owner)
 
-with pack_tab:
+# --- The pack page ------------------------------------------------------------
+def pack_owner() -> None:
     with st.container(border=True):
         st.subheader("Owner")
         owner.name = st.text_input("Owner name", value=owner.name)
@@ -198,6 +273,8 @@ with pack_tab:
             st.number_input("Minutes available today", min_value=1, max_value=720, value=owner.available_minutes)
         )
 
+
+def pack_add_pet() -> None:
     with st.container(border=True):
         st.subheader("Add a pet")
         with st.form("add_pet_form", clear_on_submit=True):
@@ -234,6 +311,8 @@ with pack_tab:
         else:
             st.info("No pets yet. Add one above.")
 
+
+def pack_add_task() -> None:
     with st.container(border=True):
         st.subheader("Add a task")
         if not owner.pets:
@@ -248,10 +327,12 @@ with pack_tab:
                     duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
                 with col3:
                     priority = st.selectbox("Priority", list(PRIORITY_VALUES), index=2)
-                col4, col5 = st.columns(2)
+                col4, col5, col6 = st.columns(3)
                 with col4:
-                    start_time = st.time_input("Start time", value=datetime(2000, 1, 1, 8, 0).time())
+                    task_day = st.date_input("Date", value=date.today(), key="new_task_day")
                 with col5:
+                    start_time = st.time_input("Start time", value=datetime(2000, 1, 1, 8, 0).time())
+                with col6:
                     frequency = st.selectbox("Repeats", ["once", "daily", "weekly"])
                 task_submitted = st.form_submit_button("Add task")
 
@@ -265,12 +346,14 @@ with pack_tab:
                         pet_name=pet.name,
                         duration_minutes=int(duration),
                         priority=PRIORITY_VALUES[priority],
-                        scheduled_time=datetime.combine(date.today(), start_time),
+                        scheduled_time=datetime.combine(task_day, start_time),
                         frequency=frequency,
                     )
                     pet.add_task(new_task)
                     st.success(f"Added '{new_task.title}' for {pet.name}.")
 
+
+def pack_manage_tasks() -> None:
     with st.container(border=True):
         st.subheader("Manage tasks")
         if not owner.get_all_tasks():
@@ -393,6 +476,19 @@ with pack_tab:
                 st.info("No tasks match that filter.")
 
 
+def render_pack() -> None:
+    """Forms for the owner, pets and tasks. Arriving through "Add tasks" puts the task form first."""
+    sections = [pack_owner, pack_add_pet, pack_add_task, pack_manage_tasks]
+    if st.session_state.get("pack_focus") == "tasks":
+        sections = (
+            [pack_add_task, pack_manage_tasks, pack_add_pet, pack_owner]
+            if owner.pets
+            else [pack_add_pet, pack_add_task, pack_manage_tasks, pack_owner]  # a task needs a pet first
+        )
+    for section in sections:
+        section()
+
+
 # --- Today tab --------------------------------------------------------------------------
 def render_hero() -> None:
     due = tasks_today(owner)
@@ -430,8 +526,10 @@ def render_pet_cards() -> None:
                 st.caption(f"{pet.species.capitalize()} · {age_text(pet.age)}")
                 label = f"{plural(left, 'task')} left today" if left else "Nothing left today"
                 st.markdown(theme.chip_html(label), unsafe_allow_html=True)
-                if st.button("View schedule", key=f"pet_open_{i}", help=f"Open {pet.name}'s schedule"):
-                    show_pet_schedule(pet.name)
+                st.button(
+                    "View schedule", key=f"pet_open_{i}", help=f"Open {pet.name}'s schedule",
+                    on_click=go, args=("Schedule",), kwargs={"sched_pet": pet.name, "sched_day": date.today()},
+                )
 
 
 def render_sticker_grid(turn: int, tasks: list[Task]) -> None:
@@ -573,11 +671,18 @@ def render_walkthrough() -> None:
                 lines = [f"- {w.removeprefix('Warning: ')}" for w in scheduler.conflict_warnings()]
                 lines += [f"- {s}" for s in conflict_suggestions(scheduler, conflicts)]
                 st.markdown("**Overlapping tasks**\n" + "\n".join(lines))
-        if st.button("Build today's plan", key=theme.KEYS["build_plan"], width="stretch"):
-            show_plan_dialog()
+        schedule_col, add_col = st.columns([3, 2])
+        schedule_col.button(
+            "View full schedule", key=theme.KEYS["build_plan"], width="stretch", on_click=go,
+            args=("Schedule",), kwargs={"sched_pet": "All pets", "sched_day": date.today()},
+        )
+        add_col.button(
+            "Add tasks", key="add_tasks", width="stretch", on_click=go, args=("The pack",),
+            kwargs={"pack_focus": "tasks"},
+        )
 
 
-with today_tab:
+def render_today() -> None:
     render_hero()
     render_pet_cards()
     chat_col, walk_col = st.columns([1.9, 1], gap="large")
@@ -585,6 +690,9 @@ with today_tab:
         render_chat()
     with walk_col:
         render_walkthrough()
+
+
+{"Today": render_today, "Schedule": render_schedule, "The pack": render_pack}[page]()
 
 st.caption(
     "PawPal+ plans routine care only. If your pet seems unwell or hurt, call your vet or an emergency clinic."

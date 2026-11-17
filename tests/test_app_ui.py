@@ -4,7 +4,7 @@ The agent is replaced by a canned result, and .env loading is switched off, so t
 API key and no network. Each test uses its own temporary data file.
 """
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -46,8 +46,9 @@ def pack(*tasks_per_pet):
     return [mochi, Pet(name="Luna", species="cat", age=6)]
 
 
-def run_app() -> AppTest:
+def run_app(page: str = "Today") -> AppTest:
     at = AppTest.from_file(str(APP), default_timeout=30)
+    at.session_state["page"] = page
     at.run()
     assert not at.exception, at.exception
     return at
@@ -93,9 +94,12 @@ def test_missing_api_key_disables_chat(data_file, monkeypatch):
 
 def test_adding_a_pet_shows_up_on_today_in_the_same_run(data_file):
     save(data_file, [])
-    at = run_app()
+    at = run_app("The pack")
     [w for w in at.text_input if w.label == "Pet name"][0].set_value("Rex")
     [b for b in at.button if b.label == "Add pet"][0].click().run()
+    assert not at.exception
+    at.session_state["page"] = "Today"
+    at.run()
     assert not at.exception
     assert "### Rex" in all_markdown(at)
     assert not at.chat_input[0].disabled
@@ -145,24 +149,136 @@ def test_overlapping_tasks_get_an_overlap_chip(data_file):
     assert "Overlap" in all_markdown(at)
 
 
-def test_build_plan_button_opens_the_dialog_without_errors(data_file):
+def test_view_full_schedule_opens_the_schedule_page_on_today(data_file):
     save(data_file, pack(Task("Walk", "Mochi", 30, 2, at_time(9))))
     at = run_app()
     at.button(key="build_plan").click().run()
-    assert not at.exception
+    assert not at.exception, at.exception
+    assert at.session_state["page"] == "Schedule"
+    assert at.title[0].value == "Full schedule"
+    assert "Walk" in all_markdown(at)
 
 
-def test_every_pet_card_opens_its_own_schedule(data_file):
+def test_every_pet_card_opens_the_schedule_filtered_to_that_pet(data_file):
     save(data_file, pack(Task("Walk", "Mochi", 30, 2, at_time(9))))
-    at = run_app()
-    for key in ("pet_open_0", "pet_open_1"):  # Mochi (has a task) and Luna (has none)
+    for key, pet in (("pet_open_0", "Mochi"), ("pet_open_1", "Luna")):
+        at = run_app()
         at.button(key=key).click().run()
         assert not at.exception, at.exception
+        assert at.session_state["page"] == "Schedule"
+        assert at.selectbox(key="sched_pet").value == pet
+
+
+def test_add_tasks_button_goes_to_the_pack_with_the_task_form_first(data_file):
+    save(data_file, pack())
+    at = run_app()
+    at.button(key="add_tasks").click().run()
+    assert not at.exception, at.exception
+    assert at.session_state["page"] == "The pack"
+    headings = [h.value for h in at.subheader]
+    assert headings.index("Add a task") < headings.index("Add a pet") < headings.index("Owner")
+
+
+def test_add_tasks_with_no_pets_puts_the_pet_form_first(data_file):
+    save(data_file, [])
+    at = run_app()
+    at.button(key="add_tasks").click().run()
+    headings = [h.value for h in at.subheader]
+    assert headings.index("Add a pet") < headings.index("Add a task")
+
+
+def test_choosing_the_pack_from_the_nav_uses_the_normal_order(data_file):
+    save(data_file, pack())
+    at = run_app("The pack")
+    headings = [h.value for h in at.subheader]
+    assert headings.index("Owner") < headings.index("Add a pet") < headings.index("Add a task")
+
+
+def test_a_day_with_no_tasks_says_so_clearly(data_file):
+    save(data_file, pack(Task("Walk", "Mochi", 30, 2, at_time(9))))
+    at = run_app("Schedule")
+    at.session_state["sched_day"] = date.today() + timedelta(days=3)
+    at.run()
+    assert not at.exception, at.exception
+    text = all_markdown(at)
+    assert "Nothing scheduled for" in text
+    assert [b for b in at.button if b.label == "Add tasks"]
+    assert "Walk" not in text
+
+
+def test_empty_day_offers_a_jump_to_the_next_day_with_tasks(data_file):
+    later = datetime.combine(date.today() + timedelta(days=2), time(10))
+    save(data_file, pack(Task("Vet visit", "Mochi", 45, 3, later)))
+    at = run_app("Schedule")
+    jump = at.button(key="sched_jump")
+    assert f"{later:%a %b %d}" in jump.label
+    jump.click().run()
+    assert not at.exception, at.exception
+    assert "Vet visit" in all_markdown(at)
+    assert "Nothing scheduled" not in all_markdown(at)
+
+
+def test_schedule_filters_by_pet_and_shows_only_that_days_tasks(data_file):
+    tomorrow = datetime.combine(date.today() + timedelta(days=1), time(8))
+    mochi = Pet(name="Mochi", species="dog", age=3)
+    luna = Pet(name="Luna", species="cat", age=6)
+    mochi.add_task(Task("Mochi walk", "Mochi", 20, 2, at_time(7)))
+    luna.add_task(Task("Luna pill", "Luna", 5, 3, at_time(8)))
+    luna.add_task(Task("Luna brushing", "Luna", 10, 1, tomorrow))
+    save(data_file, [mochi, luna])
+    at = run_app("Schedule")
+    text = all_markdown(at)
+    assert "Mochi walk" in text and "Luna pill" in text and "Luna brushing" not in text
+    at.selectbox(key="sched_pet").select("Luna").run()
+    text = all_markdown(at)
+    assert "Luna pill" in text and "Mochi walk" not in text
+    at.button(key="sched_next").click().run()
+    assert "Luna brushing" in all_markdown(at)
+
+
+def test_schedule_prev_and_today_buttons_move_the_day(data_file):
+    save(data_file, pack(Task("Walk", "Mochi", 30, 2, at_time(9))))
+    at = run_app("Schedule")
+    at.button(key="sched_prev").click().run()
+    assert at.session_state["sched_day"] == date.today() - timedelta(days=1)
+    assert "Nothing scheduled for" in all_markdown(at)
+    at.button(key="sched_today").click().run()
+    assert at.session_state["sched_day"] == date.today()
+    assert "Walk" in all_markdown(at)
+
+
+def test_schedule_with_no_pets_points_to_adding_one(data_file):
+    save(data_file, [])
+    at = run_app("Schedule")
+    assert not at.exception
+    assert "No pets yet" in all_markdown(at)
+
+
+def test_schedule_marks_overlaps_and_escapes_text(data_file):
+    save(data_file, pack(Task("<b>Walk</b>", "Mochi", 30, 2, at_time(9)), Task("Bath", "Mochi", 30, 2, at_time(9, 15))))
+    at = run_app("Schedule")
+    text = all_markdown(at)
+    assert "Overlap" in text
+    # Only blocks that allow raw HTML are a risk; the rest is shown as plain text by Streamlit.
+    html_blocks = "\n".join(m.value for m in at.markdown if m.proto.allow_html)
+    assert "&lt;b&gt;Walk" in html_blocks and "<b>Walk" not in html_blocks
+
+
+def test_new_task_form_can_pick_a_date(data_file):
+    save(data_file, pack())
+    at = run_app("The pack")
+    target = date.today() + timedelta(days=4)
+    at.date_input(key="new_task_day").set_value(target)
+    [w for w in at.text_input if w.label == "Task title"][0].set_value("Dentist")
+    [b for b in at.button if b.label == "Add task"][0].click().run()
+    assert not at.exception, at.exception
+    saved = Owner.load_from_json(data_file)
+    assert [t.scheduled_time.date() for t in saved.get_all_tasks()] == [target]
 
 
 def test_removing_a_pet_needs_confirmation_and_deletes_the_pet_and_its_tasks(data_file):
     save(data_file, pack(Task("Walk", "Mochi", 30, 2, at_time(9))))
-    at = run_app()
+    at = run_app("The pack")
     assert at.button(key="remove_pet_button").disabled  # nothing happens until the owner confirms
     at.checkbox(key="remove_pet_confirm_Mochi").check().run()
     at.button(key="remove_pet_button").click().run()
@@ -174,9 +290,11 @@ def test_removing_a_pet_needs_confirmation_and_deletes_the_pet_and_its_tasks(dat
 
 def test_removing_the_last_pet_returns_to_the_welcome_state(data_file):
     save(data_file, [Pet(name="Rex", species="dog", age=2)])
-    at = run_app()
+    at = run_app("The pack")
     at.checkbox(key="remove_pet_confirm_Rex").check().run()
     at.button(key="remove_pet_button").click().run()
     assert not at.exception, at.exception
+    at.session_state["page"] = "Today"
+    at.run()
     assert "let's meet your pack" in at.title[0].value
     assert Owner.load_from_json(data_file).pets == []

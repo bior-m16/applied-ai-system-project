@@ -9,7 +9,7 @@
 | **Intended use** | Helping one pet owner plan today's care tasks. The owner reviews every plan and clicks Accept or Discard before anything is saved. |
 | **Not intended for** | Veterinary, nutrition or medication decisions; planning for other people; unattended or automatic scheduling. |
 | **Checks around the model** | The scheduler (not the model) validates every plan; tool arguments are validated; a copy of the data is used; a human approves. See the [README](README.md#architecture-overview). |
-| **Evidence** | 126 pytest tests, plus a live evaluation of 14 trials ([eval_results.md](eval_results.md)). |
+| **Evidence** | 136 pytest tests, plus a live evaluation of 14 trials ([eval_results.md](eval_results.md)). |
 
 ## 1. Limitations and biases
 
