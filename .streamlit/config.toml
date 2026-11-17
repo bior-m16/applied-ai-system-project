@@ -1,0 +1,12 @@
+[theme]
+base = "light"
+primaryColor = "#5B3FD9"
+backgroundColor = "#F5F2FF"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#231942"
+linkColor = "#4A2FC4"
+borderColor = "#231942"
+baseRadius = "full"
+font = "Outfit:https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&display=swap, sans-serif"
+headingFont = "Fredoka:https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap, sans-serif"
+headingFontWeights = [700, 700, 600, 600, 600, 600]

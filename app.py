@@ -6,6 +6,7 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
+import theme
 from ai_planner import run_agent
 from formatting import priority_badge, task_emoji
 from pawpal_system import Owner, Pet, Scheduler, Task
@@ -103,7 +104,8 @@ def render_ai_planner() -> None:
                     st.rerun()
 
 
-st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
+st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="wide")
+theme.inject_css()
 
 title_col, toggle_col = st.columns([3, 1], vertical_alignment="center")
 title_col.title("🐾 PawPal+")

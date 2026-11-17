@@ -1,4 +1,4 @@
-streamlit>=1.30
+streamlit>=1.50
 pytest>=7.0
 tabulate[widechars]>=0.9
 anthropic>=2.9
