@@ -1,36 +1,53 @@
 ﻿flowchart TD
-    %% PawPal+ system architecture (starting point for the applied AI final project).
-    %% This shows the system as inherited from Module 2. Update it once the AI feature is designed.
+    %% PawPal+ architecture with the AI planning agent.
+    %% Solid arrows = data flow. Dotted arrows = checking, logging and testing.
+    %% The hexagon is the human decision point.
 
     User([Pet owner])
+    App["app.py<br/>Streamlit UI<br/>(AI Planner toggle)"]
 
-    subgraph UI["Interfaces"]
-        App["app.py<br/>Streamlit web app"]
-        CLI["main.py<br/>Command-line demo"]
+    subgraph Core["pawpal_system.py: core logic, no AI"]
+        Owner[("Owner, Pets, Tasks<br/>saved in data.json")]
+        Scheduler["Scheduler<br/>conflicts, free slots"]
     end
 
-    subgraph Core["pawpal_system.py (core logic)"]
-        Owner["Owner<br/>pets, available minutes"]
-        Pet["Pet<br/>tasks"]
-        Task["Task<br/>time, duration, priority, frequency"]
-        Scheduler["Scheduler<br/>sort, generate plan, detect conflicts,<br/>find free slot, explain plan"]
+    subgraph Agent["ai_planner.py: agentic workflow"]
+        Input["1. Input guardrails<br/>not empty, max 1000 chars,<br/>at least one pet"]
+        Context["2. PLAN<br/>build context from a<br/>sandbox copy of the data"]
+        Claude["Claude via Anthropic API<br/>chooses the next tool call"]
+        Tools["3. ACT<br/>add_task, remove_task, find_free_slot<br/>(arguments validated first)"]
+        Check["4. CHECK<br/>overlaps, 06:00-22:00,<br/>minutes available"]
+        Verify{"5. VERIFY<br/>code re-checks when<br/>Claude says finish"}
+        Proposal["Proposal<br/>tasks, summary, step trace"]
     end
 
-    Fmt["formatting.py<br/>badges, emojis, tables"]
-    Store[("data.json<br/>saved owner data")]
-    Tests["tests/<br/>pytest suite"]
+    Human{{"Owner reviews<br/>Accept or Discard"}}
+    Log[("pawpal_ai.log")]
+    Tests["tests/ and evaluate_agent.py<br/>113 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
 
-    User --> App
-    User --> CLI
-    App --> Owner
-    CLI --> Owner
-    Owner --> Pet --> Task
-    App --> Scheduler
-    CLI --> Scheduler
-    Scheduler --> Owner
-    Scheduler -->|"daily plan + warnings"| App
-    App --> Fmt
-    CLI --> Fmt
-    Owner <-->|"save / load"| Store
+    %% Input -> process -> output
+    User -->|"plain-English request"| App
+    App --> Input
+    Input --> Context
+    Owner -->|"copy"| Context
+    Context --> Claude
+    Claude -->|"tool call"| Tools
+    Tools --> Check
+    Check -->|"problems: REVISE"| Claude
+    Claude -->|"finish"| Verify
+    Verify -->|"problems: sent back"| Claude
+    Verify -->|"clean"| Proposal
+    Proposal --> App
+    App --> Human
+    Human -->|"Accept: save"| Owner
+    Human -->|"Discard"| App
+
+    %% Normal app use and error paths
+    App <--> Scheduler
+    Scheduler -.->|"real conflict and slot logic"| Check
+    Agent -.->|"rejected input, API error,<br/>refusal or step cap:<br/>message shown"| App
+
+    %% Logging and testing
+    Agent -.->|"logs every step"| Log
     Tests -.->|"verify"| Core
-    Tests -.->|"verify"| Fmt
+    Tests -.->|"drive the whole loop<br/>and score real runs"| Agent

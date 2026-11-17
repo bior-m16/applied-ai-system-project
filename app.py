@@ -1,11 +1,26 @@
+import logging
 import os
 from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
 
+from ai_planner import run_agent
 from formatting import priority_badge, task_emoji
 from pawpal_system import Owner, Pet, Scheduler, Task
+
+# Read ANTHROPIC_API_KEY from a .env file next to this script, if there is one.
+# The file wins over any older ANTHROPIC_API_KEY already set in Windows.
+load_dotenv(Path(__file__).with_name(".env"), override=True)
+
+# Everything the AI agent does is logged here (and by pawpal.ai to the console).
+logging.basicConfig(
+    filename=Path(__file__).with_name("pawpal_ai.log"),
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    encoding="utf-8",
+)
 
 PRIORITY_VALUES = {"low": 1, "medium": 2, "high": 3}
 PRIORITY_LABELS = {value: label for label, value in PRIORITY_VALUES.items()}
@@ -30,9 +45,69 @@ def show_conflicts(warnings: list[str], suggestions: list[str] = ()) -> None:
     st.warning(message)
 
 
+def render_ai_planner() -> None:
+    """The AI Planner panel: describe what the pets need, review the agent's plan, accept or discard."""
+    with st.container(border=True):
+        st.subheader("✨ AI Planner")
+        st.caption(
+            "Describe what your pets need. The AI drafts tasks, checks them against your schedule and "
+            "available time, and fixes any problems before showing you a plan. Nothing is saved until you accept. "
+            "It is a scheduling helper, not a veterinarian: check feeding and medication details with your vet."
+        )
+        with st.form("ai_form"):
+            ai_request = st.text_area(
+                "What do your pets need today?",
+                placeholder="Rex needs two walks and his flea medicine. Mia needs her pill with breakfast.",
+                max_chars=1000,
+            )
+            ai_submitted = st.form_submit_button("Plan with AI")
+
+        if ai_submitted:
+            with st.spinner("Planning, checking, and revising..."):
+                st.session_state.ai_result = run_agent(owner, ai_request)
+
+        ai_result = st.session_state.get("ai_result")
+        if ai_result is not None:
+            if ai_result.ok:
+                st.success(ai_result.summary)
+                st.table(
+                    [
+                        {
+                            "time": f"{t.scheduled_time:%H:%M}",
+                            "pet": t.pet_name,
+                            "task": t.title,
+                            "minutes": t.duration_minutes,
+                            "priority": t.priority_label,
+                            "repeats": t.frequency,
+                        }
+                        for t in Scheduler.sort_by_time(ai_result.added)
+                    ]
+                    or [{"time": "-", "pet": "-", "task": "No new tasks", "minutes": 0, "priority": "-", "repeats": "-"}]
+                )
+            else:
+                st.error(ai_result.summary)
+                for problem in ai_result.problems:
+                    st.write(f"- {problem}")
+            with st.expander("How the agent got here"):
+                st.write("\n".join(f"- {s}" for s in ai_result.steps) or "No steps were taken.")
+            if ai_result.ok and ai_result.added:
+                accept_col, discard_col = st.columns(2)
+                if accept_col.button("Accept and add these tasks"):
+                    count = ai_result.commit_to(owner)
+                    st.session_state.pop("ai_result")
+                    st.session_state.flash = f"Added {count} AI-planned task{'s' if count != 1 else ''}."
+                    owner.save_to_json(DATA_FILE)
+                    st.rerun()
+                if discard_col.button("Discard"):
+                    st.session_state.pop("ai_result")
+                    st.rerun()
+
+
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
-st.title("🐾 PawPal+")
+title_col, toggle_col = st.columns([3, 1], vertical_alignment="center")
+title_col.title("🐾 PawPal+")
+show_ai = toggle_col.toggle("✨ AI Planner", key="show_ai", help="Show or hide the AI planning agent")
 
 # The "vault": load the saved Owner (or start a new one) once per session and reuse it.
 if "owner" not in st.session_state:
@@ -51,6 +126,10 @@ owner: Owner = st.session_state.owner
 
 if "load_warning" in st.session_state:
     st.warning(st.session_state.pop("load_warning"))
+
+if show_ai:
+    render_ai_planner()
+    st.divider()
 
 st.markdown(
     """

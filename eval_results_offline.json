@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-16T23:13:18",
+  "model": "n/a (offline)",
+  "scenarios": [
+    {
+      "id": "S7",
+      "name": "Empty request",
+      "request": "   ",
+      "criteria": "Rejected gracefully, API never called",
+      "trials": 1,
+      "passed": 1,
+      "avg_seconds": 0.0,
+      "failures": [],
+      "outcomes": [
+        {
+          "passed": true,
+          "errors": [],
+          "seconds": 0.0,
+          "tasks_added": 0,
+          "summary": "Describe what your pets need first."
+        }
+      ]
+    },
+    {
+      "id": "S8",
+      "name": "Oversized request",
+      "request": "walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex walk Rex wal",
+      "criteria": "Rejected gracefully, API never called",
+      "trials": 1,
+      "passed": 1,
+      "avg_seconds": 0.0,
+      "failures": [],
+      "outcomes": [
+        {
+          "passed": true,
+          "errors": [],
+          "seconds": 0.0,
+          "tasks_added": 0,
+          "summary": "That request is too long (2699 characters). Keep it under 1000."
+        }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,5 @@
 streamlit>=1.30
 pytest>=7.0
 tabulate[widechars]>=0.9
+anthropic>=2.9
+python-dotenv>=1.0

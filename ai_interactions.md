@@ -67,3 +67,45 @@ Things the agent got wrong or that needed review, and how they were handled:
 **Which approach did you use in your final implementation and why?**
 
 I kept my own code but replaced its loop with the closed-form idea both models used. The weekly branch of `Task._next_time()` is now `scheduled_time + step * max(1, weeks_late + 1)`, where `weeks_late` is one division. It is shorter, easier to reason about, and does not slow down for very late tasks. I did not add Opus's `datetime` guard because `mark_complete()` already converts its `now` argument to a date before calling `_next_time()`. I used the models' edge-case lists as a checklist for my tests, which already covered most of them. I added two tests for the gaps: completing exactly a week late (the same-day slot must be skipped) and completing 100,000 weeks late. Neither model was clearly better here: Opus wrote slightly more defensive code (the `datetime` guard), Haiku listed slightly more edge cases, and for a problem this small the cheaper model gave the same correct answer.
+
+---
+
+## Agentic Workflow Enhancement: reasoning traces
+
+The AI Planner (`ai_planner.py`) works in a loop: **plan** (the agent receives the pets and existing tasks), **act** (it calls tools), **check** (my scheduler tests the result), **revise**, then **finish** (my code verifies the plan again). Every step is written to `pawpal_ai.log`. That file is git-ignored because it can hold personal text, so the trace below is copied from it. Nothing was edited except the cut-off summary text.
+
+**Request (run on 2026-11-16, model `claude-opus-5-5`):** "My pets, Oona and Beanie need a morning and evening walk and bi-weekly vet visits. I also need them to have a strategic meal plan to help them maintain their weights as they easily lose and gain weight."
+
+| Step | Tool called | What it did | Result from my code |
+|---|---|---|---|
+| 1 | `add_task` x8 | Morning walk, breakfast, evening walk and dinner for both dogs. Walks at 07:00 and 18:00, each meal right after the walks, Oona 15-minute walks and Beanie 10-minute walks | All 8 accepted |
+| 1 | `check_schedule` | Asked my scheduler whether the plan is valid | "No problems found." |
+| 2 | `finish` | Wrote the summary for the owner | My code re-checked the plan: clean, so the proposal was shown |
+
+Log excerpt (shortened):
+
+```
+16:19:34 INFO pawpal.ai: agent start model=claude-opus-5-5 day=2026-11-16 request='My pets, Oona and Beanie need a morning and evening walk ...'
+16:19:55 INFO pawpal.ai: step=1 tool=add_task args={'title': 'Morning walk', 'pet_name': 'Oona', 'start_time': '07:00', 'duration_minutes': 15, 'priority': 2, 'frequency': 'daily'} error=False -> Added Morning walk for Oona at 07:00 for 15 min.
+16:19:55 INFO pawpal.ai: step=1 tool=add_task args={'title': 'Breakfast (measured portion)', 'pet_name': 'Beanie', 'start_time': '07:35', 'duration_minutes': 10, 'priority': 3, 'frequency': 'daily'} error=False -> Added Breakfast (measured portion) for Beanie at 07:35 for 10 min.
+        ... six more add_task lines ...
+16:19:55 INFO pawpal.ai: step=1 tool=check_schedule args={} error=False -> No problems found.
+16:20:00 INFO pawpal.ai: step=2 tool=finish args={'summary': "Monday 16 Nov plan for Oona and Beanie (uses 90 of your 90 minutes, all set to repeat daily). ... Meals are high priority and come after the walks so the dogs don't exercise on a full stomach. ... Not scheduled: the vet visit every two weeks. The scheduler can't repeat a task every two weeks ..."}
+16:20:00 INFO pawpal.ai: agent done: 8 tasks added
+```
+
+**What the trace shows.**
+- The agent made a multi-step plan and chose its own ordering (walks before meals, with a reason).
+- It said what it could not do (the bi-weekly vet visit) instead of pretending.
+- The check and the finish were verified by my scheduler, not by the model's own word.
+
+**What it does not show.** In this run, and in every live evaluation run, the first plan was already valid, so the check-and-revise step never found a problem. The revise path (the check reports an overlap, the agent moves a task, and the check passes) is covered by a scripted test, `test_agent_revises_after_check_finds_a_conflict` in `tests/test_ai_planner.py`, not by a live trace. The trace for that test is the sequence of fake-model replies written inside the test.
+
+**Other traces.** `evaluate_agent.py` runs more scenarios (an unknown pet, a prompt-injection attempt, too little time) and writes a pass/fail table to [eval_results.md](eval_results.md). The README's "Sample interactions" section shows four more real requests with their results. To make a new trace, turn on the AI Planner, send a request, and read `pawpal_ai.log`.
+
+---
+
+## Test Harness / Evaluation Script
+
+`evaluate_agent.py` runs the agent on 8 predefined scenarios, scores each trial with independent checks, repeats each live scenario twice, and prints a summary (passed trials, average seconds, consistency). Results: 14 of 14 trials passed on 2026-11-16, saved in [eval_results.md](eval_results.md) and [eval_results.json](eval_results.json). The scorer itself has 7 tests in `tests/test_evaluate_agent.py`. Run it with `python evaluate_agent.py` (or `--offline` for the two scenarios that need no API key).
+
