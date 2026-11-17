@@ -93,6 +93,41 @@ def tasks_today(owner: Owner) -> list[Task]:
     return Scheduler.sort_by_time([t for t in pending if t.scheduled_time.date() == today])
 
 
+@st.dialog("Pet schedule", width="large")
+def show_pet_schedule(pet_name: str) -> None:
+    """Every task for one pet, in time order, with today's pending ones counted up top."""
+    pet = next((p for p in owner.pets if p.name == pet_name), None)
+    if pet is None:
+        st.info("That pet is no longer here.")
+        return
+    st.subheader(f"{pet.name}'s schedule")
+    if not pet.tasks:
+        st.info(f"No tasks for {pet.name} yet. Ask PawPal on the Today tab, or add one in The pack.")
+        return
+    sched = Scheduler(owner)
+    today = date.today()
+    pending_today = [t for t in pet.tasks if not t.completed and t.scheduled_time.date() == today]
+    minutes = sum(t.duration_minutes for t in pending_today)
+    col1, col2 = st.columns(2)
+    col1.metric("Tasks left today", len(pending_today))
+    col2.metric("Minutes today", minutes)
+    overlapping = {id(t) for pair in sched.detect_conflicts(owner.filter_tasks(completed=False)) for t in pair}
+    st.table(
+        [
+            {
+                "when": f"{t.scheduled_time:%a %b %d, %H:%M}",
+                "task": f"{task_emoji(t.title)} {t.title}",
+                "minutes": t.duration_minutes,
+                "priority": priority_badge(t.priority),
+                "repeats": t.frequency,
+                "status": "✅ done" if t.completed else "⏳ pending",
+                "conflict": "⚠️ overlap" if id(t) in overlapping else "",
+            }
+            for t in sched.sort_by_time(pet.tasks)
+        ]
+    )
+
+
 @st.dialog("Today's plan", width="large")
 def show_plan_dialog() -> None:
     """The scheduler's plan for today: what fits in the owner's available minutes, and why."""
@@ -383,6 +418,8 @@ def render_pet_cards() -> None:
                 st.caption(f"{pet.species.capitalize()} · {age_text(pet.age)}")
                 label = f"{plural(left, 'task')} left today" if left else "Nothing left today"
                 st.markdown(theme.chip_html(label), unsafe_allow_html=True)
+                if st.button("View schedule", key=f"pet_open_{i}", help=f"Open {pet.name}'s schedule"):
+                    show_pet_schedule(pet.name)
 
 
 def render_sticker_grid(turn: int, tasks: list[Task]) -> None:

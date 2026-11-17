@@ -1,8 +1,8 @@
 [theme]
 base = "light"
 primaryColor = "#5B3FD9"
-backgroundColor = "#F5F2FF"
-secondaryBackgroundColor = "#FFFFFF"
+backgroundColor = "#F3EADA"
+secondaryBackgroundColor = "#FBF5E9"
 textColor = "#231942"
 linkColor = "#4A2FC4"
 borderColor = "#231942"

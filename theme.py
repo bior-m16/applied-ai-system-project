@@ -20,7 +20,8 @@ import streamlit as st
 # --- design tokens (from the Playful Pack mockup) ------------------------------------
 INK = "#231942"          # text, outlines, shadows
 MUTED = "#4A4266"        # secondary text (7:1 on white)
-BG = "#F5F2FF"           # page background (lavender mist)
+BG = "#F3EADA"           # page background (warm beige)
+CREAM = "#FBF5E9"        # big cards (chat) and inputs
 ACCENT = "#5B3FD9"       # primary actions, user chat bubble
 YELLOW = "#FFD166"       # "Today's walk-through" panel, primary sticker buttons
 PINK = "#FFC2D1"         # card fill 1, high priority
@@ -62,12 +63,12 @@ h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
 /* pet cards: colored, outlined, offset shadow */
 {"".join(
     f'.st-key-pet_card_{i} {{ background:{fill}; border:{_BORDER}; border-radius:28px; '
-    f'box-shadow:{_SHADOW}; padding:20px; }}\n'
+    f'box-shadow:{_SHADOW}; padding:20px; position:relative; }}\n'
     for i, fill in enumerate(CARD_FILLS * 3)
 )}
 
 /* big white chat card and yellow walk-through panel */
-.st-key-chat_card {{ background:#FFFFFF; border:{_BORDER}; border-radius:32px;
+.st-key-chat_card {{ background:{CREAM}; border:{_BORDER}; border-radius:32px;
     box-shadow:6px 6px 0 {INK}; padding:28px; }}
 .st-key-walkthrough {{ background:{YELLOW}; border:{_BORDER}; border-radius:32px;
     box-shadow:6px 6px 0 {INK}; padding:24px; }}
@@ -99,7 +100,12 @@ h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
     border:{_BORDER}; border-radius:50%; background:{YELLOW}; }}
 
 /* chat input: pill with ink outline */
-[data-testid="stChatInput"] {{ border:{_BORDER}; border-radius:999px; background:#FFFFFF; }}
+[data-testid="stChatInput"] {{ border:{_BORDER}; border-radius:999px; background:{CREAM}; }}
+
+/* the "View schedule" button covers its whole pet card, so the card itself is the click target */
+[class*="st-key-pet_card_"] button {{ background:#FFFFFF; font-size:14px; min-height:36px; }}
+[class*="st-key-pet_card_"] button::after {{ content:""; position:absolute; inset:0; border-radius:28px; cursor:pointer; }}
+[class*="st-key-pet_card_"]:hover {{ transform:translate(-1px,-1px); box-shadow:7px 7px 0 {INK}; }}
 
 /* buttons: pills; primary = yellow sticker with shadow */
 .stButton button, .stFormSubmitButton button, [data-testid="stPopover"] button {{

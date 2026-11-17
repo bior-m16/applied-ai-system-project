@@ -150,3 +150,11 @@ def test_build_plan_button_opens_the_dialog_without_errors(data_file):
     at = run_app()
     at.button(key="build_plan").click().run()
     assert not at.exception
+
+
+def test_every_pet_card_opens_its_own_schedule(data_file):
+    save(data_file, pack(Task("Walk", "Mochi", 30, 2, at_time(9))))
+    at = run_app()
+    for key in ("pet_open_0", "pet_open_1"):  # Mochi (has a task) and Luna (has none)
+        at.button(key=key).click().run()
+        assert not at.exception, at.exception
