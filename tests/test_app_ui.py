@@ -11,6 +11,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 import ai_planner
+import notifications
 from ai_planner import AgentResult
 from pawpal_system import Owner, Pet, Task
 
@@ -138,9 +139,10 @@ def test_failed_agent_result_shows_the_error(data_file, monkeypatch):
 def test_user_text_is_escaped_in_the_walkthrough(data_file):
     save(data_file, pack(Task("<script>alert(1)</script>", "Mochi", 10, 2, at_time(9))))
     at = run_app()
-    text = all_markdown(at)
-    assert "&lt;script&gt;" in text
-    assert "<script>alert" not in text
+    # Only blocks that allow raw HTML are a risk; the rest is shown as plain text by Streamlit.
+    html_blocks = chr(10).join(m.value for m in at.markdown if m.proto.allow_html)
+    assert "&lt;script&gt;" in html_blocks
+    assert "<script>alert" not in html_blocks
 
 
 def test_overlapping_tasks_get_an_overlap_chip(data_file):
@@ -298,3 +300,96 @@ def test_removing_the_last_pet_returns_to_the_welcome_state(data_file):
     at.run()
     assert "let's meet your pack" in at.title[0].value
     assert Owner.load_from_json(data_file).pets == []
+
+
+# --- reminders -------------------------------------------------------------------------------
+def fake_clock(monkeypatch, when: datetime) -> None:
+    monkeypatch.setattr(notifications, "current_time", lambda: when)
+
+
+def toasts(at: AppTest) -> list[str]:
+    return [t.value for t in at.toast]
+
+
+def test_toast_five_minutes_before_a_task_starts(data_file, monkeypatch):
+    save(data_file, pack(Task("Morning walk", "Mochi", 20, 2, at_time(8))))
+    fake_clock(monkeypatch, at_time(7, 55))
+    at = run_app()
+    assert any("Morning walk in 5 minutes" in t for t in toasts(at)), toasts(at)
+
+
+def test_toast_when_the_task_is_due_and_it_is_not_repeated_on_the_next_run(data_file, monkeypatch):
+    save(data_file, pack(Task("Medication", "Luna", 5, 3, at_time(8))))
+    fake_clock(monkeypatch, at_time(8, 0))
+    at = run_app()
+    assert any("Time for Medication" in t for t in toasts(at))
+    at.run()
+    assert not any("Time for Medication" in t for t in toasts(at)), "the same reminder must not repeat"
+
+
+def test_both_reminders_fire_for_one_task_over_time(data_file, monkeypatch):
+    save(data_file, pack(Task("Walk", "Mochi", 20, 2, at_time(8))))
+    fake_clock(monkeypatch, at_time(7, 56))
+    at = run_app()
+    assert any("Walk in 4 minutes" in t for t in toasts(at))
+    fake_clock(monkeypatch, at_time(8, 1))
+    at.run()
+    assert any("Time for Walk" in t for t in toasts(at))
+
+
+def test_no_toast_for_far_away_or_completed_tasks(data_file, monkeypatch):
+    done = Task("Done walk", "Mochi", 20, 2, at_time(8), completed=True)
+    save(data_file, pack(done, Task("Later", "Mochi", 20, 2, at_time(15))))
+    fake_clock(monkeypatch, at_time(7, 57))
+    at = run_app()
+    assert toasts(at) == []
+
+
+def test_reminders_can_be_switched_off(data_file, monkeypatch):
+    save(data_file, pack(Task("Walk", "Mochi", 20, 2, at_time(8))))
+    fake_clock(monkeypatch, at_time(7, 57))
+    at = AppTest.from_file(str(APP), default_timeout=30)
+    at.session_state["reminders_on"] = False
+    at.run()
+    assert not at.exception, at.exception
+    assert toasts(at) == []
+
+
+def test_reminders_also_fire_on_other_pages(data_file, monkeypatch):
+    save(data_file, pack(Task("Walk", "Mochi", 20, 2, at_time(8))))
+    fake_clock(monkeypatch, at_time(7, 57))
+    at = run_app("The pack")
+    assert any("Walk in 3 minutes" in t for t in toasts(at))
+
+
+def test_up_next_line_shows_the_next_task_and_the_wait(data_file, monkeypatch):
+    save(data_file, pack(Task("Walk", "Mochi", 20, 2, at_time(8)), Task("Dinner", "Luna", 10, 3, at_time(18))))
+    fake_clock(monkeypatch, at_time(7, 30))
+    at = run_app()
+    assert "**Up next:** Walk (Mochi), in 30 min" in all_markdown(at)
+
+
+def test_up_next_line_when_nothing_is_coming(data_file, monkeypatch):
+    save(data_file, pack())
+    fake_clock(monkeypatch, at_time(7, 30))
+    at = run_app()
+    assert "nothing coming up" in all_markdown(at)
+
+
+def test_notification_markers_escape_user_text(data_file, monkeypatch):
+    save(data_file, pack(Task('</script><b x="1">x</b>', "Mochi", 20, 2, at_time(8))))
+    fake_clock(monkeypatch, at_time(7, 57))
+    at = run_app()
+    markers = [h.proto.body for h in at.get("html") if 'class="pawpal-alert"' in h.proto.body]
+    assert len(markers) == 1, "one hidden marker per reminder"
+    assert "</script><b" not in markers[0] and '<b x="1">' not in markers[0]
+    assert "&lt;/script&gt;" in markers[0]
+
+
+def test_the_notification_listener_script_is_installed_once_and_has_no_user_text(data_file, monkeypatch):
+    save(data_file, pack(Task("Secret title", "Mochi", 20, 2, at_time(8))))
+    fake_clock(monkeypatch, at_time(7, 57))
+    at = run_app()
+    listeners = [h.proto.body for h in at.get("html") if "__pawpalNotifyInstalled" in h.proto.body]
+    assert len(listeners) == 1
+    assert "Secret title" not in listeners[0]

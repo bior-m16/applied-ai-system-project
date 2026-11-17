@@ -9,7 +9,7 @@
 | **Intended use** | Helping one pet owner plan today's care tasks. The owner reviews every plan and clicks **Add all** or **Not now** before anything is saved. |
 | **Not intended for** | Veterinary, nutrition or medication decisions; planning for other people; unattended or automatic scheduling. |
 | **Checks around the model** | The scheduler (not the model) validates every plan; tool arguments are validated; a copy of the data is used; a human approves. See the [README](README.md#architecture-overview). |
-| **Evidence** | 136 pytest tests, plus a live evaluation of 14 trials ([eval_results.md](eval_results.md)). |
+| **Evidence** | 163 pytest tests, plus a live evaluation of 14 trials ([eval_results.md](eval_results.md)). |
 
 ## 1. Limitations and biases
 
@@ -24,6 +24,7 @@
 - **Default routines.** The agent put walks at 07:00 and 18:00 and meals right after. That fits a typical working household and may not fit a night-shift worker or a different culture's routine. The owner can edit the times, but the first draft carries those assumptions.
 - **Overriding what I asked for.** In one test I asked for training at 10:15 and the agent moved it to 11:30 because the vet visit was in the way. It told me, and I think it was right, but it made a decision on my behalf. The proposal-and-Accept step is what keeps this safe.
 - **English only,** and tested only on short requests I wrote myself.
+- **Reminders need the page open.** The app can only notify while PawPal+ is open in a browser tab. It checks every 30 seconds, so it cannot wake a closed tab, a sleeping computer or a phone.
 
 **Health advice is not verified.** For the weight-management request the agent added "weigh both dogs weekly" and "change portions by about 10% if their weight drifts", and told me to ask my vet for calorie targets. That is sensible, but nothing in the system checks it. I did not write a rule for it. It came from the model, and a different run could say something less careful.
 

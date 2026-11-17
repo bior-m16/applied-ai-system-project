@@ -5,9 +5,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
+import notifications
 import theme
 from ai_planner import run_agent
 from formatting import priority_badge, task_emoji
@@ -32,6 +32,8 @@ PRIORITY_LABELS = {value: label for label, value in PRIORITY_VALUES.items()}
 DATA_FILE = Path(os.environ.get("PAWPAL_DATA_FILE", Path(__file__).with_name("data.json")))
 
 MAX_CHAT_TURNS = 10
+# How often the open page checks for reminders (seconds). PAWPAL_REMINDER_SECONDS exists so a test can speed it up.
+REMINDER_EVERY = f"{float(os.environ.get('PAWPAL_REMINDER_SECONDS', 30))}s"
 CHAT_HEIGHT = 420  # pixels; the chat scrolls inside this height
 
 
@@ -227,6 +229,105 @@ def render_schedule() -> None:
     st.caption(SCHEDULE_NOTE)
 
 
+# --- reminders ---------------------------------------------------------------------------
+# One script, installed once per page: it watches for hidden "alert" markers the app adds and turns each into a
+# desktop notification (once per tag). Streamlit does not re-run a script when an element updates, so the app
+# sends data markers instead of new scripts, and the notification text never goes inside script code.
+_NOTIFY_LISTENER = """<script>
+if (!window.__pawpalNotifyInstalled) {
+  window.__pawpalNotifyInstalled = true;
+  const shown = new Set();
+  const fire = el => {
+    const tag = el.dataset.tag;
+    if (!tag || shown.has(tag)) return;
+    shown.add(tag);
+    if (window.Notification && Notification.permission === 'granted') {
+      new Notification(el.dataset.title, {body: el.dataset.body, tag: tag});
+    }
+  };
+  const scan = node => {
+    if (node.nodeType !== 1) return;
+    if (node.matches('.pawpal-alert')) fire(node);
+    node.querySelectorAll('.pawpal-alert').forEach(fire);
+  };
+  new MutationObserver(records => records.forEach(r => r.addedNodes.forEach(scan))).observe(document.body, {childList: true, subtree: true});
+  document.querySelectorAll('.pawpal-alert').forEach(fire);
+}
+</script>"""
+
+
+def send_browser_notifications(alerts: list[notifications.Alert]) -> None:
+    """Hand alerts to the page's listener as hidden data markers (all text is HTML-escaped)."""
+    for alert in alerts:
+        st.html(
+            '<div class="pawpal-alert" style="display:none" '
+            f'data-title="{html.escape(alert.title, quote=True)}" '
+            f'data-body="{html.escape(alert.body, quote=True)}" '
+            f'data-tag="{html.escape(alert.key, quote=True)}"></div>'
+        )
+
+
+@st.fragment(run_every=REMINDER_EVERY)
+def reminder_watcher() -> None:
+    """Every few seconds: toast (and browser-notify) tasks that start within 5 minutes or right now.
+
+    Runs on every page. Each reminder is shown once per session. It only works while this page is open.
+    """
+    if not st.session_state.get("reminders_on", True):
+        return
+    sent: set = st.session_state.setdefault("notified", set())
+    due = notifications.alerts_due(owner.filter_tasks(completed=False), notifications.current_time(), sent)
+    for alert in due:
+        sent.add(alert.key)
+        st.toast(
+            f"**{alert.title}**\n\n{alert.body}",
+            icon=":material/schedule:" if alert.kind == "soon" else ":material/notifications_active:",
+            duration="long" if alert.kind == "soon" else "infinite",  # a due-now reminder stays until dismissed
+        )
+    if due:
+        send_browser_notifications(due)
+
+
+@st.fragment(run_every=REMINDER_EVERY)
+def up_next_line() -> None:
+    """The next pending task and how long until it starts; refreshes itself."""
+    now = notifications.current_time()
+    nxt = notifications.next_up(owner.filter_tasks(completed=False), now)
+    if nxt is None:
+        st.markdown("**Up next:** nothing coming up.")
+        return
+    st.markdown(f"**Up next:** {nxt.title} ({nxt.pet_name}), {notifications.describe_wait(nxt, now)}")
+
+
+_NOTIFY_BUTTON = f"""
+<div style="font-family:sans-serif;display:flex;align-items:center;gap:10px;color:{theme.INK};font-size:13px">
+<button id="pawpal-notify-btn" style="display:none;border:2px solid {theme.INK};border-radius:999px;background:#fff;color:{theme.INK};
+font-weight:600;padding:6px 14px;cursor:pointer">Turn on desktop notifications</button><span id="pawpal-notify-status"></span></div>
+<script>
+const b = document.getElementById('pawpal-notify-btn'), s = document.getElementById('pawpal-notify-status');
+function update() {{
+  if (!window.Notification) {{ s.textContent = 'Desktop notifications are not supported in this browser.'; return; }}
+  const p = Notification.permission;
+  b.style.display = p === 'default' ? '' : 'none';
+  s.textContent = p === 'granted' ? 'Desktop notifications are on.'
+    : p === 'denied' ? 'Desktop notifications are blocked in your browser settings.' : '';
+}}
+b.onclick = () => Notification.requestPermission().then(update);
+update();
+</script>"""
+
+
+def reminder_settings() -> None:
+    """Switch reminders on or off, and let the owner allow desktop notifications."""
+    with st.expander("Reminders"):
+        st.toggle(
+            "Remind me 5 minutes before and when a task starts", key="reminders_on",
+            help="Checked every 30 seconds, only while this page is open in your browser.",
+        )
+        st.html(_NOTIFY_BUTTON, unsafe_allow_javascript=True)
+        st.caption("Reminders only arrive while PawPal+ is open in a browser tab.")
+
+
 # --- page setup -------------------------------------------------------------------------
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="wide")
 theme.inject_css()
@@ -255,6 +356,7 @@ st.markdown(theme.logo_html(), unsafe_allow_html=True)
 
 PAGES = ["Today", "Schedule", "The pack"]
 st.session_state.setdefault("page", "Today")
+st.session_state.setdefault("reminders_on", True)
 
 
 def nav_changed() -> None:
@@ -269,6 +371,8 @@ page = st.session_state.page or "Today"
 st.session_state["_last_page"] = page
 
 scheduler = Scheduler(owner)
+st.html(_NOTIFY_LISTENER, unsafe_allow_javascript=True)  # installs the notification listener once
+reminder_watcher()  # runs on every page
 
 # --- The pack page ------------------------------------------------------------
 def pack_owner() -> None:
@@ -658,6 +762,7 @@ def render_walkthrough() -> None:
     overlapping = {id(t) for pair in conflicts for t in pair}
     with st.container(key=theme.KEYS["walkthrough"]):
         st.subheader("Today's walk-through")
+        up_next_line()
         if not due:
             st.markdown("Nothing planned yet. Ask PawPal or add a task in **The pack**.")
         for task in due:
@@ -677,6 +782,7 @@ def render_walkthrough() -> None:
                 lines = [f"- {w.removeprefix('Warning: ')}" for w in scheduler.conflict_warnings()]
                 lines += [f"- {s}" for s in conflict_suggestions(scheduler, conflicts)]
                 st.markdown("**Overlapping tasks**\n" + "\n".join(lines))
+        reminder_settings()
         schedule_col, add_col = st.columns([3, 2])
         schedule_col.button(
             "View full schedule", key=theme.KEYS["build_plan"], width="stretch", on_click=go,
@@ -702,16 +808,16 @@ def render_today() -> None:
 
 scroll_target = st.session_state.pop("_scroll", None)
 if scroll_target:
-    # A zero-height script frame that scrolls the main page (it can reach the parent document).
+    # A small script that scrolls the main page.
     script = (
-        "const doc = window.parent.document;"
+        "const doc = document;"
         "const go = () => { const main = doc.querySelector('[data-testid=\"stMain\"]');"
         f"const target = {scroll_target!r} === 'top' ? null : doc.querySelector('.st-key-{scroll_target}');"
         "if (target) { target.style.scrollMarginTop = '80px'; target.scrollIntoView({block: 'start'}); }"
         "else if (main) { main.scrollTo(0, 0); } };"
         "go(); setTimeout(go, 150); setTimeout(go, 500);"
     )
-    components.html(f"<script>{script}</script>", height=0)
+    st.html(f"<script>{script}</script>", unsafe_allow_javascript=True)
 
 st.caption(
     "PawPal+ plans routine care only. If your pet seems unwell or hurt, call your vet or an emergency clinic."

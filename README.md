@@ -54,7 +54,7 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
 
     Human{{"Owner reviews<br/>Add all or Not now"}}
     Log[("pawpal_ai.log")]
-    Tests["tests/ and evaluate_agent.py<br/>136 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
+    Tests["tests/ and evaluate_agent.py<br/>163 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
 
     %% Input -> process -> output
     User -->|"plain-English request"| App
@@ -227,7 +227,7 @@ Everything below was produced by running the commands shown, on 2026-11-16. The 
 
 ```
 $ python -m pytest -q
-136 passed in 8.5s
+163 passed in 11.1s
 ```
 
 **2. Guardrails, run for real with no API call**
@@ -294,7 +294,7 @@ The per-scenario table is in [Reliability evaluation](#reliability-evaluation), 
 
 ## Testing summary
 
-**How it is tested.** `python -m pytest` runs **136 tests**: 78 for the scheduler and formatting, 28 for the agent, 7 for the evaluation scorer, and 23 for the Streamlit screens (run headless, with a canned agent result). I also scored the live agent with `evaluate_agent.py` (next section), and I installed the project into a clean virtual environment from `requirements.txt` alone to check the setup steps.
+**How it is tested.** `python -m pytest` runs **163 tests**: 78 for the scheduler and formatting, 28 for the agent, 7 for the evaluation scorer, 17 for the reminder rules, and 33 for the Streamlit screens (run headless, with a canned agent result and a fake clock). I also scored the live agent with `evaluate_agent.py` (next section), and I installed the project into a clean virtual environment from `requirements.txt` alone to check the setup steps.
 
 The agent tests use a scripted fake Claude client. They cover:
 - the happy path, and a plan staying a proposal until it is committed;
@@ -309,7 +309,7 @@ The agent tests use a scripted fake Claude client. They cover:
 
 ```
 $ python -m pytest -q
-136 passed in 8.5s
+163 passed in 11.1s
 ```
 
 ### Reliability evaluation
@@ -384,7 +384,7 @@ The sections below document the original PawPal+ scheduler that the AI agent bui
 - **Saved between runs.** Pets and tasks are written to `data.json` and loaded again the next time the app starts (see [Data persistence](#-data-persistence)).
 - **Readable output.** Color-coded priority and status badges, an emoji for each kind of task, and boxed tables built with `tabulate` (see [Output formatting](#-output-formatting)).
 - **Safe with empty data.** A pet with no tasks, an owner with no pets, or zero available minutes produce an empty plan, not an error.
-- **Tested.** 136 automated tests cover the scheduling logic, the AI agent and its evaluation (see [Testing PawPal+](#-testing-pawpal)).
+- **Tested.** 163 automated tests cover the scheduling logic, the AI agent and its evaluation (see [Testing PawPal+](#-testing-pawpal)).
 
 ## Implementation Summary
 
@@ -674,6 +674,7 @@ The app has three pages, chosen from the bar under the logo: **Today** (pet card
 - **Mark a task complete:** pick a task and complete it. Daily and weekly tasks create their next occurrence, and the app tells you the day it lands on.
 - **Schedule page:** pick any day (Prev, Next, Today or a date box) and all pets or one pet. It lists that day's tasks with time ranges, marks overlaps, shows the minutes used out of the available minutes, and has a **Why this plan?** explanation. A day with no tasks says so and offers a jump to the next day that has tasks. **View full schedule** and each pet card's **View schedule** open it, and **Add tasks** jumps to the task form.
 
+- **Reminders:** while the page is open, PawPal+ shows a notification **5 minutes before** a task starts and **when it is time** for it, on every page. Each reminder shows once, as an on-screen message and, if you click **Turn on desktop notifications** in the **Reminders** panel, as a desktop notification from your browser. The walk-through also shows an **Up next** line with the countdown. Switch reminders off in the same panel. Limit: it can only notify while PawPal+ is open in a browser tab (it checks every 30 seconds). Done tasks never alert.
 - **Everything is saved:** close the app and open it again, and your pets and tasks are still there.
 
 ### Example workflow
