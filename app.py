@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 import theme
@@ -100,10 +101,15 @@ SCHEDULE_NOTE = (
 )
 
 
-def go(page: str, **state) -> None:
-    """Button callback: set some session values, then show another page (runs before the next rerun)."""
+def go(page: str, scroll: str = "top", **state) -> None:
+    """Button callback: set some session values, then show another page (runs before the next rerun).
+
+    `scroll` is "top" or the key of a container to bring into view; Streamlit would otherwise keep the
+    old scroll position, leaving the owner halfway down the new page.
+    """
     for key, value in state.items():
         st.session_state[key] = value
+    st.session_state["_scroll"] = scroll
     st.session_state.page = page
     st.session_state["_last_page"] = page
     if page != "The pack":
@@ -181,7 +187,7 @@ def render_schedule() -> None:
             add_col, jump_col, _ = st.columns([1.2, 3, 2])
             add_col.button(
                 "Add tasks", key="sched_add_empty", type="primary", on_click=go, args=("The pack",),
-                kwargs={"pack_focus": "tasks"},
+                kwargs={"pack_focus": "tasks", "scroll": "add_task_card"},
             )
             if later:
                 jump_col.button(
@@ -201,7 +207,7 @@ def render_schedule() -> None:
     summary_col.caption(f"{plural(len(shown), 'task')} · {len(pending)} to do · {budget}")
     add_col.button(
         "Add tasks", key="sched_add", type="primary", on_click=go, args=("The pack",),
-        kwargs={"pack_focus": "tasks"}, width="stretch",
+        kwargs={"pack_focus": "tasks", "scroll": "add_task_card"}, width="stretch",
     )
 
     day_pending = [t for t in day_all if not t.completed]
@@ -313,7 +319,7 @@ def pack_add_pet() -> None:
 
 
 def pack_add_task() -> None:
-    with st.container(border=True):
+    with st.container(border=True, key="add_task_card"):
         st.subheader("Add a task")
         if not owner.pets:
             st.info("Add a pet first, then you can give it tasks.")
@@ -678,7 +684,7 @@ def render_walkthrough() -> None:
         )
         add_col.button(
             "Add tasks", key="add_tasks", width="stretch", on_click=go, args=("The pack",),
-            kwargs={"pack_focus": "tasks"},
+            kwargs={"pack_focus": "tasks", "scroll": "add_task_card"},
         )
 
 
@@ -693,6 +699,19 @@ def render_today() -> None:
 
 
 {"Today": render_today, "Schedule": render_schedule, "The pack": render_pack}[page]()
+
+scroll_target = st.session_state.pop("_scroll", None)
+if scroll_target:
+    # A zero-height script frame that scrolls the main page (it can reach the parent document).
+    script = (
+        "const doc = window.parent.document;"
+        "const go = () => { const main = doc.querySelector('[data-testid=\"stMain\"]');"
+        f"const target = {scroll_target!r} === 'top' ? null : doc.querySelector('.st-key-{scroll_target}');"
+        "if (target) { target.style.scrollMarginTop = '80px'; target.scrollIntoView({block: 'start'}); }"
+        "else if (main) { main.scrollTo(0, 0); } };"
+        "go(); setTimeout(go, 150); setTimeout(go, 500);"
+    )
+    components.html(f"<script>{script}</script>", height=0)
 
 st.caption(
     "PawPal+ plans routine care only. If your pet seems unwell or hurt, call your vet or an emergency clinic."
