@@ -100,7 +100,11 @@ h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
     border:{_BORDER}; border-radius:50%; background:{YELLOW}; }}
 
 /* chat input: pill with ink outline */
-[data-testid="stChatInput"] {{ border:{_BORDER}; border-radius:999px; background:{CREAM}; }}
+[data-testid="stChatInput"] {{ border:0; background:transparent; }}
+[data-testid="stChatInput"] > div {{ border:{_BORDER} !important; border-radius:999px; background:#FFFFFF;
+    padding-left:20px; }}
+[data-testid="stChatInput"] textarea {{ color:{INK}; }}
+[data-testid="stChatInput"] textarea::placeholder {{ color:{MUTED}; opacity:1; }}
 
 /* the "View schedule" button covers its whole pet card, so the card itself is the click target */
 [class*="st-key-pet_card_"] button {{ background:#FFFFFF; font-size:14px; min-height:36px; }}

@@ -40,7 +40,7 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
 
     Human{{"Owner reviews<br/>Accept or Discard"}}
     Log[("pawpal_ai.log")]
-    Tests["tests/ and evaluate_agent.py<br/>124 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
+    Tests["tests/ and evaluate_agent.py<br/>126 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
 
     %% Input -> process -> output
     User -->|"plain-English request"| App
@@ -213,7 +213,7 @@ Everything below was produced by running the commands shown, on 2026-11-16. The 
 
 ```
 $ python -m pytest -q
-124 passed in 5.2s
+126 passed in 5.5s
 ```
 
 **2. Guardrails, run for real with no API call**
@@ -281,7 +281,7 @@ The per-scenario table is in [Reliability evaluation](#reliability-evaluation), 
 
 ## Testing summary
 
-**How it is tested.** `python -m pytest` runs **124 tests**: 78 for the scheduler and formatting, 28 for the agent, 7 for the evaluation scorer, and 11 for the Streamlit screens (run headless, with a canned agent result). I also scored the live agent with `evaluate_agent.py` (next section), and I installed the project into a clean virtual environment from `requirements.txt` alone to check the setup steps.
+**How it is tested.** `python -m pytest` runs **126 tests**: 78 for the scheduler and formatting, 28 for the agent, 7 for the evaluation scorer, and 13 for the Streamlit screens (run headless, with a canned agent result). I also scored the live agent with `evaluate_agent.py` (next section), and I installed the project into a clean virtual environment from `requirements.txt` alone to check the setup steps.
 
 The agent tests use a scripted fake Claude client. They cover:
 - the happy path, and a plan staying a proposal until it is committed;
@@ -296,7 +296,7 @@ The agent tests use a scripted fake Claude client. They cover:
 
 ```
 $ python -m pytest -q
-124 passed in 5.2s
+126 passed in 5.5s
 ```
 
 ### Reliability evaluation
@@ -371,7 +371,7 @@ The sections below document the original PawPal+ scheduler that the AI agent bui
 - **Saved between runs.** Pets and tasks are written to `data.json` and loaded again the next time the app starts (see [Data persistence](#-data-persistence)).
 - **Readable output.** Color-coded priority and status badges, an emoji for each kind of task, and boxed tables built with `tabulate` (see [Output formatting](#-output-formatting)).
 - **Safe with empty data.** A pet with no tasks, an owner with no pets, or zero available minutes produce an empty plan, not an error.
-- **Tested.** 124 automated tests cover the scheduling logic, the AI agent and its evaluation (see [Testing PawPal+](#-testing-pawpal)).
+- **Tested.** 126 automated tests cover the scheduling logic, the AI agent and its evaluation (see [Testing PawPal+](#-testing-pawpal)).
 
 ## Implementation Summary
 

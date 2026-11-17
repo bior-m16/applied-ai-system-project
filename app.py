@@ -31,6 +31,7 @@ PRIORITY_LABELS = {value: label for label, value in PRIORITY_VALUES.items()}
 DATA_FILE = Path(os.environ.get("PAWPAL_DATA_FILE", Path(__file__).with_name("data.json")))
 
 MAX_CHAT_TURNS = 10
+CHAT_HEIGHT = 420  # pixels; the chat scrolls inside this height
 
 
 # --- small helpers ---------------------------------------------------------------------
@@ -219,6 +220,17 @@ with pack_tab:
             st.table(
                 [{"name": p.name, "species": p.species, "age": p.age, "tasks": len(p.tasks)} for p in owner.pets]
             )
+            with st.expander("Remove a pet"):
+                doomed_name = st.selectbox("Pet to remove", [p.name for p in owner.pets], key="remove_pet_pick")
+                doomed = next(p for p in owner.pets if p.name == doomed_name)
+                confirmed = st.checkbox(
+                    f"Yes, remove {doomed.name} and their {plural(len(doomed.tasks), 'task')} for good",
+                    key=f"remove_pet_confirm_{doomed.name}",
+                )
+                if st.button("Remove pet", disabled=not confirmed, key="remove_pet_button"):
+                    owner.remove_pet(doomed)
+                    st.session_state.flash = f"Removed {doomed.name} and their tasks."
+                    st.rerun()  # redraw so no widget above still lists the removed pet
         else:
             st.info("No pets yet. Add one above.")
 
@@ -484,20 +496,23 @@ def render_chat() -> None:
     chat: list[dict] = st.session_state.setdefault("chat", [])
     with st.container(key=theme.KEYS["chat_card"]):
         st.subheader("Ask PawPal")
-        if not chat:
-            with st.chat_message("assistant", avatar=":material/pets:"):
-                st.markdown(
-                    "Hi! Tell me what your pets need, like *“Rex needs two walks and his flea medicine”* "
-                    "or *“Luna needs her pill with breakfast.”* I'll check your schedule and available "
-                    "time before suggesting anything, and nothing is saved until you add it."
-                )
-        last_assistant = max((i for i, item in enumerate(chat) if item["role"] == "assistant"), default=-1)
-        for turn, item in enumerate(chat):
-            if item["role"] == "user":
-                with st.chat_message("user"):
-                    st.markdown(item["text"])
-            else:
-                render_assistant_turn(turn, item, is_latest=turn == last_assistant)
+        # A fixed-height box: the conversation scrolls inside it instead of growing the page.
+        messages = st.container(height=CHAT_HEIGHT, border=False, key="chat_messages")
+        with messages:
+            if not chat:
+                with st.chat_message("assistant", avatar=":material/pets:"):
+                    st.markdown(
+                        "Hi! Tell me what your pets need, like *“Rex needs two walks and his flea medicine”* "
+                        "or *“Luna needs her pill with breakfast.”* I'll check your schedule and available "
+                        "time before suggesting anything, and nothing is saved until you add it."
+                    )
+            last_assistant = max((i for i, item in enumerate(chat) if item["role"] == "assistant"), default=-1)
+            for turn, item in enumerate(chat):
+                if item["role"] == "user":
+                    with st.chat_message("user"):
+                        st.markdown(item["text"])
+                else:
+                    render_assistant_turn(turn, item, is_latest=turn == last_assistant)
 
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
         can_ask = bool(owner.pets) and has_key
@@ -522,10 +537,11 @@ def render_chat() -> None:
                 if item["role"] == "assistant" and item["status"] == "pending":
                     item["status"] = "dismissed"
             chat.append({"role": "user", "text": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            with st.spinner("Planning, checking, and revising..."):
-                result = run_agent(owner, prompt, ai_day)
+            with messages:  # show the new message and the spinner inside the scrolling box
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                with st.spinner("Planning, checking, and revising..."):
+                    result = run_agent(owner, prompt, ai_day)
             chat.append({"role": "assistant", "result": result, "status": "pending"})
             del chat[:-MAX_CHAT_TURNS]
             st.rerun()

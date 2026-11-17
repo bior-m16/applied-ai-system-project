@@ -158,3 +158,25 @@ def test_every_pet_card_opens_its_own_schedule(data_file):
     for key in ("pet_open_0", "pet_open_1"):  # Mochi (has a task) and Luna (has none)
         at.button(key=key).click().run()
         assert not at.exception, at.exception
+
+
+def test_removing_a_pet_needs_confirmation_and_deletes_the_pet_and_its_tasks(data_file):
+    save(data_file, pack(Task("Walk", "Mochi", 30, 2, at_time(9))))
+    at = run_app()
+    assert at.button(key="remove_pet_button").disabled  # nothing happens until the owner confirms
+    at.checkbox(key="remove_pet_confirm_Mochi").check().run()
+    at.button(key="remove_pet_button").click().run()
+    assert not at.exception, at.exception
+    saved = Owner.load_from_json(data_file)
+    assert [p.name for p in saved.pets] == ["Luna"]
+    assert saved.get_all_tasks() == []
+
+
+def test_removing_the_last_pet_returns_to_the_welcome_state(data_file):
+    save(data_file, [Pet(name="Rex", species="dog", age=2)])
+    at = run_app()
+    at.checkbox(key="remove_pet_confirm_Rex").check().run()
+    at.button(key="remove_pet_button").click().run()
+    assert not at.exception, at.exception
+    assert "let's meet your pack" in at.title[0].value
+    assert Owner.load_from_json(data_file).pets == []
