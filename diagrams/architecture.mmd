@@ -4,7 +4,7 @@
     %% The hexagon is the human decision point.
 
     User([Pet owner])
-    App["app.py<br/>Streamlit UI<br/>(AI Planner toggle)"]
+    App["app.py<br/>Streamlit UI<br/>(Today and The pack tabs,<br/>Ask PawPal chat)"]
 
     subgraph Core["pawpal_system.py: core logic, no AI"]
         Owner[("Owner, Pets, Tasks<br/>saved in data.json")]
@@ -23,7 +23,7 @@
 
     Human{{"Owner reviews<br/>Accept or Discard"}}
     Log[("pawpal_ai.log")]
-    Tests["tests/ and evaluate_agent.py<br/>113 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
+    Tests["tests/ and evaluate_agent.py<br/>123 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
 
     %% Input -> process -> output
     User -->|"plain-English request"| App

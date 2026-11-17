@@ -21,7 +21,7 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
     %% The hexagon is the human decision point.
 
     User([Pet owner])
-    App["app.py<br/>Streamlit UI<br/>(AI Planner toggle)"]
+    App["app.py<br/>Streamlit UI<br/>(Today and The pack tabs,<br/>Ask PawPal chat)"]
 
     subgraph Core["pawpal_system.py: core logic, no AI"]
         Owner[("Owner, Pets, Tasks<br/>saved in data.json")]
@@ -40,7 +40,7 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
 
     Human{{"Owner reviews<br/>Accept or Discard"}}
     Log[("pawpal_ai.log")]
-    Tests["tests/ and evaluate_agent.py<br/>113 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
+    Tests["tests/ and evaluate_agent.py<br/>123 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
 
     %% Input -> process -> output
     User -->|"plain-English request"| App
@@ -71,7 +71,7 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
 ```
 
 **Data flow (input, process, output).**
-1. **Input:** the owner types a request into the **AI Planner** panel (the toggle in the top-right corner of the app). Input guardrails reject empty or oversized requests, and requests when there are no pets.
+1. **Input:** the owner types a request into the **Ask PawPal** chat on the **Today** tab. Input guardrails reject empty or oversized requests, and requests when there are no pets.
 2. **Process:** the agent builds a context (pets with species, age and notes, today's existing tasks, minutes available) from a **copy** of the owner's data, then loops. Claude picks a tool call, the code validates its arguments and runs it on the copy, and `check_schedule` runs the real `Scheduler` (overlaps, the 06:00-22:00 window, the time budget). Problems go back to Claude so it can revise. When Claude says it is finished, **the code runs the check again** and sends the agent back if anything is still wrong.
 3. **Output:** a proposal with the tasks, a plain-language summary, and a step-by-step trace.
 
@@ -105,7 +105,7 @@ Requires Python 3.10 or newer (tested on 3.14) and, for the AI Planner, an Anthr
    ```bash
    streamlit run app.py
    ```
-5. **Use the AI Planner.** Add at least one pet, switch on **✨ AI Planner** (top right), describe what your pets need, and click **Plan with AI**. Open **How the agent got here** to see its steps, then **Accept** or **Discard**.
+5. **Use the AI Planner.** Add at least one pet, open the **Today** tab, describe what your pets need in the **Ask PawPal** chat, and press Enter. Open **How PawPal planned this** to see its steps, then click **Add all N to today** (accept) or **Not now** (discard). The **The pack** tab holds the forms for pets, tasks, editing and filters, and **Build today's plan** opens the scheduler's plan.
 6. **Run the tests** (no key or network needed):
    ```bash
    python -m pytest
@@ -213,7 +213,7 @@ Everything below was produced by running the commands shown, on 2026-11-16. The 
 
 ```
 $ python -m pytest -q
-113 passed in 0.26s
+123 passed in 4.3s
 ```
 
 **2. Guardrails, run for real with no API call**
@@ -281,7 +281,7 @@ The per-scenario table is in [Reliability evaluation](#reliability-evaluation), 
 
 ## Testing summary
 
-**How it is tested.** `python -m pytest` runs **113 tests**: 78 for the scheduler and formatting, 28 for the agent, and 7 for the evaluation scorer. I also scored the live agent with `evaluate_agent.py` (next section), and I installed the project into a clean virtual environment from `requirements.txt` alone to check the setup steps.
+**How it is tested.** `python -m pytest` runs **123 tests**: 78 for the scheduler and formatting, 28 for the agent, 7 for the evaluation scorer, and 10 for the Streamlit screens (run headless, with a canned agent result). I also scored the live agent with `evaluate_agent.py` (next section), and I installed the project into a clean virtual environment from `requirements.txt` alone to check the setup steps.
 
 The agent tests use a scripted fake Claude client. They cover:
 - the happy path, and a plan staying a proposal until it is committed;
@@ -296,7 +296,7 @@ The agent tests use a scripted fake Claude client. They cover:
 
 ```
 $ python -m pytest -q
-113 passed in 0.5s
+123 passed in 4.3s
 ```
 
 ### Reliability evaluation
@@ -371,7 +371,7 @@ The sections below document the original PawPal+ scheduler that the AI agent bui
 - **Saved between runs.** Pets and tasks are written to `data.json` and loaded again the next time the app starts (see [Data persistence](#-data-persistence)).
 - **Readable output.** Color-coded priority and status badges, an emoji for each kind of task, and boxed tables built with `tabulate` (see [Output formatting](#-output-formatting)).
 - **Safe with empty data.** A pet with no tasks, an owner with no pets, or zero available minutes produce an empty plan, not an error.
-- **Tested.** 113 automated tests cover the scheduling logic, the AI agent and its evaluation (see [Testing PawPal+](#-testing-pawpal)).
+- **Tested.** 123 automated tests cover the scheduling logic, the AI agent and its evaluation (see [Testing PawPal+](#-testing-pawpal)).
 
 ## Implementation Summary
 
