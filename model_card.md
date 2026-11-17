@@ -6,7 +6,7 @@
 |---|---|
 | **What it is** | An agent inside the PawPal+ pet-care app that turns a plain-English request into scheduled tasks (`ai_planner.py`). |
 | **Model** | Claude (`claude-opus-5-5` by default, medium effort), called through the Anthropic API. |
-| **Intended use** | Helping one pet owner plan today's care tasks. The owner reviews every plan and clicks Accept or Discard before anything is saved. |
+| **Intended use** | Helping one pet owner plan today's care tasks. The owner reviews every plan and clicks **Add all** or **Not now** before anything is saved. |
 | **Not intended for** | Veterinary, nutrition or medication decisions; planning for other people; unattended or automatic scheduling. |
 | **Checks around the model** | The scheduler (not the model) validates every plan; tool arguments are validated; a copy of the data is used; a human approves. See the [README](README.md#architecture-overview). |
 | **Evidence** | 136 pytest tests, plus a live evaluation of 14 trials ([eval_results.md](eval_results.md)). |
@@ -38,7 +38,7 @@
 | **Cost abuse** | Someone with access to the app sends many large requests and runs up the API bill. | Each request is capped at 1,000 characters, 12 model turns, 3 rejected finishes and 20 new tasks. | There is no limit on how many requests one user can send. The app is meant to run locally for one person. If it were shared online, it would need rate limiting and per-user keys. |
 | **Leaking the API key** | The key is committed to GitHub and used by strangers. | The key lives in `.env`, which is git-ignored, and `.env.example` holds only a placeholder. I checked that `pawpal_ai.log` contains no key. | Nothing stops a user from pasting the key into a file that is committed. |
 | **Privacy** | Pet names, notes and the owner's request are sent to Anthropic's API, and requests are stored in plain text in `pawpal_ai.log` on the owner's computer. | The log is git-ignored, and no personal data other than pet and owner details is sent. | Users are not told, inside the app, that their text leaves their computer. The log is not encrypted or rotated. |
-| **Wrong output taken as fact** | An owner accepts a plan without reading it. | Nothing is saved without Accept, and the agent's summary says what it left out, so omissions are visible. | The system can't force the owner to read it. |
+| **Wrong output taken as fact** | An owner accepts a plan without reading it. | Nothing is saved until the owner clicks Add all, and the agent's summary says what it left out, so omissions are visible. | The system can't force the owner to read it. |
 
 ## 3. What surprised me while testing reliability
 

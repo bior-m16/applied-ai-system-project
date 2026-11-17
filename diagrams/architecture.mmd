@@ -21,7 +21,7 @@
         Proposal["Proposal<br/>tasks, summary, step trace"]
     end
 
-    Human{{"Owner reviews<br/>Accept or Discard"}}
+    Human{{"Owner reviews<br/>Add all or Not now"}}
     Log[("pawpal_ai.log")]
     Tests["tests/ and evaluate_agent.py<br/>136 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
 
@@ -39,8 +39,8 @@
     Verify -->|"clean"| Proposal
     Proposal --> App
     App --> Human
-    Human -->|"Accept: save"| Owner
-    Human -->|"Discard"| App
+    Human -->|"Add all: save"| Owner
+    Human -->|"Not now"| App
 
     %% Normal app use and error paths
     App <--> Scheduler

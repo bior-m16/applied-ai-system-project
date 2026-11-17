@@ -1,12 +1,10 @@
 # AI Interactions Log
 
-> **Stretch features only.** Only fill in the sections that apply to stretch features you attempted. If you did not attempt a stretch feature, leave its section blank or delete it. This file is not required for the core project.
+This log covers the stretch features I worked on: an agent doing multi-step changes, a prompt comparison, the agentic planner's reasoning traces, and the evaluation script.
 
 ---
 
 ## Agent Workflow (SF7)
-
-> Document your experience using an AI agent (e.g., Cursor Agent, Claude, Copilot) to make multi-step changes autonomously.
 
 This documents the two challenge features, which I gave to the agent as multi-step changes.
 
@@ -35,15 +33,13 @@ Things the agent got wrong or that needed review, and how they were handled:
 - **Tests could have overwritten real data.** Driving the app in a test would have written to the real `data.json`. The app now reads a `PAWPAL_DATA_FILE` environment variable, and the agent's tests used a temporary file.
 - **A Mermaid marker it couldn't check.** The agent first marked class methods in the UML with `$`, then removed it because it could not render the diagram to confirm it works, and used a comment instead. The diagram should be rendered in the Mermaid Live Editor to confirm.
 - **Docs that went stale.** The test counts in the README and reflection had to be updated, and the README's example JSON was shortened, so it now says the real file is laid out differently.
-- **Review I still own.** I read each change before accepting it, ran the app myself, and decided when to commit and push. Any edits I make by hand are my own to add here.
+- **Review I still own.** I read each change before accepting it, ran the app myself, and decided when to commit and push.
 
 **Challenges 3 and 4 (priority scheduling and output formatting).** I asked the agent to add priority-first scheduling and friendlier output. It added a `Priority` enum (Low, Medium, High) and `Scheduler.sort_by_priority()` in `pawpal_system.py`, split `plan_notes()` out of `explain_plan()` so a table can sit above the notes, and wrote a new `formatting.py` (color-coded badges, task emojis, `tabulate` tables). It then rewired `main.py` (new `--minutes` option, tables, a priority view) and `app.py` (shared badges and a "Sort by" dropdown), added 14 tests including a new `tests/test_formatting.py`, and refreshed the README outputs from real runs. Files modified: `pawpal_system.py`, `formatting.py`, `main.py`, `app.py`, `requirements.txt`, `tests/test_pawpal.py`, `tests/test_formatting.py`, `diagrams/uml.mmd`, `diagrams/uml_final.mmd`, `README.md`, `reflection.md`. Things that needed fixing: a shell quoting error stopped a long command once, and one of its own edits produced a broken string in `pawpal_system.py` that the test run caught immediately. Emojis in task names are guessed from title keywords because tasks have no "type" field.
 
 ---
 
 ## Prompt Comparison (SF11)
-
-> Compare two different prompts (or two different models) on the same task.
 
 **Task:** the logic for rescheduling a weekly recurring task when it is completed, which is the trickiest algorithm in PawPal+ (it has to keep the task on its weekday whether it was finished on time, late, or early).
 

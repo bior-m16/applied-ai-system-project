@@ -10,6 +10,20 @@ You type *"Max needs a training session at 10:15 and his heartworm pill with bre
 
 This project extends **PawPal+**, the pet-care planner I built in Modules 1-3. PawPal+ is a Streamlit app where an owner adds pets, gives each pet tasks (title, duration, priority, start time, repeat setting), and gets a daily plan chosen by priority within the owner's available minutes. Its scheduler sorts and filters tasks, warns about overlapping tasks, repeats daily and weekly tasks, finds free time slots, explains its plan, and saves everything to `data.json`. It had no AI: every task was entered by hand. The new work is the AI agent in `ai_planner.py`, its tests, and its integration into the app. The original scheduler documentation is kept [below](#scheduler-reference-original-pawpal).
 
+## What it looks like
+
+Screenshots of the running app (sample pets Mochi and Luna).
+
+**Today:** pet cards, the **Ask PawPal** chat (where the AI agent lives), and the walk-through with **View full schedule** and **Add tasks**.
+
+![The Today page](assets/ui-today.png)
+
+**Schedule:** any day, all pets or one pet. A day with no tasks says so clearly and offers a jump to the next day that has some.
+
+![The Schedule page for a day with tasks](assets/ui-schedule.png)
+
+![The Schedule page for a day with no tasks](assets/ui-empty-day.png)
+
 ## Architecture overview
 
 The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). Solid arrows are data flow, dotted arrows are checking, logging and testing, and the hexagon is the human decision.
@@ -38,7 +52,7 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
         Proposal["Proposal<br/>tasks, summary, step trace"]
     end
 
-    Human{{"Owner reviews<br/>Accept or Discard"}}
+    Human{{"Owner reviews<br/>Add all or Not now"}}
     Log[("pawpal_ai.log")]
     Tests["tests/ and evaluate_agent.py<br/>136 pytest tests (fake Claude client)<br/>+ live reliability evaluation"]
 
@@ -56,8 +70,8 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
     Verify -->|"clean"| Proposal
     Proposal --> App
     App --> Human
-    Human -->|"Accept: save"| Owner
-    Human -->|"Discard"| App
+    Human -->|"Add all: save"| Owner
+    Human -->|"Not now"| App
 
     %% Normal app use and error paths
     App <--> Scheduler
@@ -76,7 +90,7 @@ The full source is in [diagrams/architecture.mmd](diagrams/architecture.mmd). So
 3. **Output:** a proposal with the tasks, a plain-language summary, and a step-by-step trace.
 
 **Where humans and tests check the AI.**
-- **Human:** the owner reviews the proposal and clicks **Accept** or **Discard**. Only Accept changes real data.
+- **Human:** the owner reviews the proposal and clicks **Add all N to today** or **Not now**. Only **Add all** changes real data.
 - **Code:** the scheduler, not the model, decides whether a plan is valid, and every tool argument is validated before it runs.
 - **Tests and evaluation:** 28 tests drive the whole loop with a scripted stand-in for Claude, so they need no key and no network. A separate script, `evaluate_agent.py`, scores the live agent on fixed scenarios (see [Reliability evaluation](#reliability-evaluation)).
 
@@ -254,12 +268,11 @@ The per-scenario table is in [Reliability evaluation](#reliability-evaluation), 
 | Bad tool arguments | Unknown pet, time `25:99`, negative duration, bad priority | Rejected with an error, nothing changed | 9 unit-test cases |
 | Premature "finish" | Agent says done while tasks overlap | My code re-checks and sends it back | Unit tests |
 | Runaway loop | Agent never finishes | Stops at 12 turns; 20-task cap | Unit tests |
-| Human approval | Any plan | Nothing is saved until Accept is clicked | Unit test and the app |
+| Human approval | Any plan | Nothing is saved until **Add all** is clicked | Unit test and the app |
 
 ## Portfolio
 
 - **Code:** <https://github.com/bior-m16/applied-ai-system-project>
-- **Video walkthrough (optional):** Loom link: *add here after recording* (grading uses the text evidence above, not the video).
 
 **What this project says about me as an AI engineer.** I treat a model as one component in a system, not as the system. I started from a scheduler I already trusted and let Claude do only what it is good at, turning a vague request into concrete tasks, while exact questions such as overlaps and time budgets stay in tested code. I build a way to measure and a way to fail safely before I trust a result: validated tool calls, hard limits, a human Accept step, a log of every step, and an evaluation script with its own tests. I also report what I could not prove. The revise loop never fired in a live run, the checks are narrow, and the sample is small, and I wrote that in the docs instead of quoting a perfect score.
 
@@ -651,22 +664,24 @@ PawPal+ has a Streamlit app for everyday use and a terminal demo (`main.py`) tha
 
 ### What you can do in the app
 
-- **Owner:** set the owner's name and how many minutes are available today.
-- **Add a Pet:** enter a name, species, and age. A duplicate or empty name shows an error, and the pet list updates immediately.
-- **Add a Task:** choose a pet, then set the title, duration, priority, start time, and whether it repeats (once, daily, weekly).
-- **Your Tasks:** see every pet's tasks sorted by time or by priority (the **Sort by** dropdown), with colored priorities and a pending or done status. Filter by pet and by status. Overlapping tasks are marked "⚠️ overlap", and a single warning box above the table names each conflicting pair and points you to **Edit or remove a task** to fix it. It also suggests the next free time slot for the clashing task.
+The app has three pages, chosen from the bar under the logo: **Today** (pet cards, the **Ask PawPal** AI chat, and the walk-through), **Schedule** (any day, all pets or one), and **The pack** (the forms below).
+
+- **Owner** (The pack): set the owner's name and how many minutes are available today.
+- **Add a pet** (The pack): enter a name, species, and age. A duplicate or empty name shows an error, and the pet list updates immediately. **Remove a pet** deletes a pet and all of its tasks after you tick a confirmation box.
+- **Add a task** (The pack): choose a pet, then set the title, duration, priority, date, start time, and whether it repeats (once, daily, weekly).
+- **Manage tasks** (The pack): see every pet's tasks sorted by time or by priority (the **Sort by** dropdown), with colored priorities and a pending or done status. Filter by pet and by status. Overlapping tasks are marked "⚠️ overlap", and a single warning box above the table names each conflicting pair and points you to **Edit or remove a task** to fix it. It also suggests the next free time slot for the clashing task.
 - **Edit or remove a task:** pick any task, change its title, duration, priority, date, start time, or repeat setting and save, or remove it. Moving a task to another day takes it out of today's plan. Conflict warnings update right away.
 - **Mark a task complete:** pick a task and complete it. Daily and weekly tasks create their next occurrence, and the app tells you the day it lands on.
-- **Generate schedule:** see today's plan with the number of tasks planned and minutes used, plus a **Why this plan?** explanation.
+- **Schedule page:** pick any day (Prev, Next, Today or a date box) and all pets or one pet. It lists that day's tasks with time ranges, marks overlaps, shows the minutes used out of the available minutes, and has a **Why this plan?** explanation. A day with no tasks says so and offers a jump to the next day that has tasks. **View full schedule** and each pet card's **View schedule** open it, and **Add tasks** jumps to the task form.
 
 - **Everything is saved:** close the app and open it again, and your pets and tasks are still there.
 
 ### Example workflow
 
-1. Jordan has 90 minutes available today. In **Add a Pet**, Jordan adds Mochi (dog) and Luna (cat).
-2. In **Add a Task**, Jordan adds a daily "Morning walk" for Mochi at 07:30 (high priority, 30 min), a daily "Breakfast and medication" for Luna at 08:00 (high, 10 min), a weekly "Grooming" for Mochi at 15:00 (low, 45 min), and a one-time "Play session" for Luna at 18:00 (medium, 20 min).
-3. **Your Tasks** lists all four sorted by time. Filtering by Luna shows only her two tasks.
-4. Jordan clicks **Generate schedule**. The plan has three tasks (60 of 90 minutes) in time order, and **Why this plan?** says Grooming was left out because it didn't fit.
+1. Jordan has 90 minutes available today. In **Add a pet**, Jordan adds Mochi (dog) and Luna (cat).
+2. In **Add a task**, Jordan adds a daily "Morning walk" for Mochi at 07:30 (high priority, 30 min), a daily "Breakfast and medication" for Luna at 08:00 (high, 10 min), a weekly "Grooming" for Mochi at 15:00 (low, 45 min), and a one-time "Play session" for Luna at 18:00 (medium, 20 min).
+3. **Manage tasks** lists all four sorted by time. Filtering by Luna shows only her two tasks.
+4. Jordan clicks **View full schedule** on the Today page. It lists the day's tasks, and **Why this plan?** shows the plan of three tasks (60 of 90 minutes) in time order and says Grooming was left out because it didn't fit.
 5. Jordan adds a "Vet video call" for Luna at 07:45. A warning appears saying it overlaps the Morning walk and the Breakfast task, and those rows are marked "⚠️ overlap". Jordan opens **Edit or remove a task**, moves the vet call to 09:00, and the warning and the "⚠️ overlap" marks disappear.
 6. After the walk, Jordan completes "Morning walk" under **Mark a task complete**. The app confirms that tomorrow's walk was created.
 
